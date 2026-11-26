@@ -1,0 +1,190 @@
+// Source of truth for the database. See docs/superpowers/specs/2026-11-26-extraction-review-design.md.
+// Hand-written CHECK constraints live in the migration SQL (Prisma can't express them).
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DocumentType {
+  invoice
+  lease
+  market_report
+
+  @@map("document_type")
+}
+
+enum VersionStatus {
+  queued
+  extracting
+  extracted
+  failed
+  superseded
+
+  @@map("version_status")
+}
+
+enum RunStatus {
+  running
+  succeeded
+  failed
+  abandoned
+
+  @@map("run_status")
+}
+
+enum ReviewAction {
+  approve
+  correct
+
+  @@map("review_action")
+}
+
+/// A logical document (e.g. "the Meridian invoice"). Versions hang off it.
+model Document {
+  id               String       @id @default(uuid()) @db.Uuid
+  type             DocumentType
+  title            String
+  currentVersionId String?      @unique @map("current_version_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  currentVersion DocumentVersion?  @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+  versions       DocumentVersion[] @relation("DocumentVersions")
+
+  @@map("documents")
+}
+
+/// One uploaded PDF. Its parsed text is stored and never rewritten, so evidence for
+/// version N is always checked against N's text, even after N+1 exists.
+model DocumentVersion {
+  id             String        @id @default(uuid()) @db.Uuid
+  documentId     String        @map("document_id") @db.Uuid
+  versionNo      Int           @map("version_no")
+  /// FileStore key, "<sha256>.pdf"
+  fileKey        String        @map("file_key")
+  sha256         String
+  status         VersionStatus @default(queued)
+  error          String?
+  parsedText     String?       @map("parsed_text")
+  pageOffsets    Int[]         @map("page_offsets")
+  /// Claude countTokens for the whole parsed text
+  totalTokens    Int?          @map("total_tokens")
+  charsPerToken  Float?        @map("chars_per_token")
+  /// The only run allowed to finish this version
+  activeRunId    String?       @map("active_run_id") @db.Uuid
+  leaseExpiresAt DateTime?     @map("lease_expires_at") @db.Timestamptz
+  attempts       Int           @default(0)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  document     Document         @relation("DocumentVersions", fields: [documentId], references: [id])
+  currentOf    Document?        @relation("CurrentVersion")
+  runs         ExtractionRun[]
+  chunks       VersionChunk[]
+  chunkResults ChunkResult[]
+  values       ExtractedValue[]
+
+  @@unique([documentId, versionNo])
+  @@index([status, leaseExpiresAt])
+  @@map("document_versions")
+}
+
+/// One extraction attempt. Kept forever for debugging.
+model ExtractionRun {
+  id         String    @id @default(uuid()) @db.Uuid
+  versionId  String    @map("version_id") @db.Uuid
+  status     RunStatus @default(running)
+  model      String
+  error      String?
+  startedAt  DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz
+
+  version DocumentVersion @relation(fields: [versionId], references: [id])
+
+  @@index([versionId])
+  @@map("extraction_runs")
+}
+
+/// The chunk plan for a version, written once. Chunk text is parsedText[start, end).
+model VersionChunk {
+  versionId  String @map("version_id") @db.Uuid
+  chunkIndex Int    @map("chunk_index")
+  start      Int
+  end        Int
+  /// Claude countTokens for this exact slice
+  tokens     Int
+  firstPage  Int    @map("first_page")
+  lastPage   Int    @map("last_page")
+
+  version DocumentVersion @relation(fields: [versionId], references: [id])
+
+  @@id([versionId, chunkIndex])
+  @@map("version_chunks")
+}
+
+/// One LLM answer per chunk. Not keyed by run, so a resumed run reuses finished chunks.
+model ChunkResult {
+  versionId     String   @map("version_id") @db.Uuid
+  chunkIndex    Int      @map("chunk_index")
+  promptVersion String   @map("prompt_version")
+  runId         String   @map("run_id") @db.Uuid
+  prompt        String
+  rawResponse   Json     @map("raw_response")
+  candidates    Json
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  version DocumentVersion @relation(fields: [versionId], references: [id])
+
+  @@id([versionId, chunkIndex, promptVersion])
+  @@map("chunk_results")
+}
+
+/// One field's value for one version. Immutable. A gap is value = null with a gap_reason.
+model ExtractedValue {
+  id              String   @id @default(uuid()) @db.Uuid
+  versionId       String   @map("version_id") @db.Uuid
+  field           String
+  value           String?
+  evidence        String?
+  gapReason       String?  @map("gap_reason")
+  /// Conflicting candidates from different chunks, kept on a gap
+  candidates      Json?
+  evidencePage    Int?     @map("evidence_page")
+  evidenceStart   Int?     @map("evidence_start")
+  evidenceEnd     Int?     @map("evidence_end")
+  /// Same field in the previous extracted version
+  previousValueId String?  @map("previous_value_id") @db.Uuid
+  /// Review inherited from the previous version when evidence is unchanged
+  carriedReviewId String?  @map("carried_review_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  version       DocumentVersion  @relation(fields: [versionId], references: [id])
+  previousValue ExtractedValue?  @relation("PreviousValue", fields: [previousValueId], references: [id])
+  nextValues    ExtractedValue[] @relation("PreviousValue")
+  carriedReview Review?          @relation("CarriedReview", fields: [carriedReviewId], references: [id])
+  reviews       Review[]         @relation("OwnReviews")
+
+  @@unique([versionId, field])
+  @@map("extracted_values")
+}
+
+/// Append-only review history. The latest row per value is its current review.
+model Review {
+  id             String       @id @default(uuid()) @db.Uuid
+  valueId        String       @map("value_id") @db.Uuid
+  action         ReviewAction
+  correctedValue String?      @map("corrected_value")
+  note           String?
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  value     ExtractedValue   @relation("OwnReviews", fields: [valueId], references: [id])
+  carriedBy ExtractedValue[] @relation("CarriedReview")
+
+  @@index([valueId, createdAt])
+  @@map("reviews")
+}

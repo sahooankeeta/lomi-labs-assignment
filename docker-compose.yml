@@ -1,0 +1,81 @@
+x-node-env: &node-env
+  DATABASE_URL: postgres://lomi:lomi@postgres:5432/lomi
+  REDIS_URL: redis://redis:6379
+  UPLOAD_DIR: /data/uploads
+  FIXTURES_DIR: /app/fixtures
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lomi
+      POSTGRES_PASSWORD: lomi
+      POSTGRES_DB: lomi
+    ports: ['5432:5432']
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lomi -d lomi']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    # AOF on, but Postgres stays the source of truth: losing Redis must never lose user-visible state.
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['6379:6379']
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # One-shot: apply migrations, then seed v1 of the fixtures. api/worker wait for it.
+  migrate:
+    build: { context: ., target: node-app, args: { APP: db } }
+    working_dir: /app/packages/db
+    command:
+      ['sh', '-c', 'node node_modules/prisma/build/index.js migrate deploy && node dist/seed.js']
+    environment: *node-env
+    volumes:
+      - ./fixtures:/app/fixtures:ro
+      - uploads:/data/uploads
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    build: { context: ., target: node-app, args: { APP: api } }
+    command: ['node', 'apps/api/dist/index.js']
+    environment:
+      <<: *node-env
+      API_PORT: 3000
+    ports: ['3000:3000']
+    volumes: [uploads:/data/uploads]
+    restart: unless-stopped
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: ., target: node-app, args: { APP: worker } }
+    command: ['node', 'apps/worker/dist/index.js']
+    env_file:
+      - path: .env
+        required: false
+    environment: *node-env
+    volumes: [uploads:/data/uploads]
+    restart: unless-stopped
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web, args: { APP: web } }
+    ports: ['8080:80']
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

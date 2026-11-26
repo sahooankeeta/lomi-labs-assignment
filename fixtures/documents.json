@@ -1,0 +1,27 @@
+[
+  {
+    "id": "doc-invoice-001",
+    "type": "invoice",
+    "title": "Invoice — Meridian Office Supplies",
+    "versions": [
+      { "version": 1, "file": "documents/invoice-001.pdf" },
+      { "version": 2, "file": "documents/invoice-001.v2.pdf", "note": "Revised invoice. Seed only version 1; use version 2 to exercise re-extraction." }
+    ]
+  },
+  {
+    "id": "doc-lease-001",
+    "type": "lease",
+    "title": "Lease excerpt — 1200 Harbor Street, Unit 4B",
+    "versions": [
+      { "version": 1, "file": "documents/lease-excerpt-001.pdf" }
+    ]
+  },
+  {
+    "id": "doc-report-001",
+    "type": "market_report",
+    "title": "Market report excerpt — Eastport Rental Market, Q3",
+    "versions": [
+      { "version": 1, "file": "documents/market-report-excerpt-001.pdf" }
+    ]
+  }
+]

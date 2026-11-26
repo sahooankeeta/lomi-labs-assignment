@@ -1,0 +1,27 @@
+{
+  "name": "@lomi/queue",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@lomi/config": "workspace:*"
+  },
+  "dependencies": {
+    "bullmq": "^6.7.10",
+    "ioredis": "^6.1.0"
+  }
+}

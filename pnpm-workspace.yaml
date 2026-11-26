@@ -1,0 +1,10 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  esbuild: true
+  # Prisma CLI downloads its schema engine (used by migrate) on install.
+  '@prisma/engines': true
+  prisma: true
+  # Optional native msgpack speed-up for BullMQ; pure-JS fallback is fine.
+  msgpackr-extract: false
