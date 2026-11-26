@@ -5,6 +5,6 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: { path: 'prisma/migrations' },
   datasource: {
-    url: process.env.DATABASE_URL ?? 'postgres://lomi:lomi@localhost:5432/lomi',
+    url: process.env.DATABASE_URL ?? 'postgres://lomi:lomi@localhost:55432/lomi',
   },
 });
