@@ -6,7 +6,7 @@ import type { Db } from './client.js';
 
 /** Integration tests run against their own database; `lomi` is never touched. */
 export const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ?? 'postgres://lomi:lomi@localhost:55432/lomi_test';
+  process.env.TEST_DATABASE_URL ?? 'postgres://lomi:lomi@localhost:5432/lomi_test';
 
 /** CREATE DATABASE if missing, then apply every migration with the Prisma CLI. */
 export async function prepareTestDatabase(): Promise<void> {

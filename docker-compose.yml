@@ -12,7 +12,7 @@ services:
       POSTGRES_USER: lomi
       POSTGRES_PASSWORD: lomi
       POSTGRES_DB: lomi
-    ports: ['55432:5432']
+    ports: ['5432:5432']
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U lomi -d lomi']
