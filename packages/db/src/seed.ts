@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createLogger } from '@lomi/logger';
 import { FixtureManifest } from '@lomi/shared';
 import { createDb } from './client.js';
 
@@ -19,6 +20,7 @@ const manifest = FixtureManifest.parse(
   JSON.parse(await readFile(path.join(fixturesDir, 'documents.json'), 'utf8')),
 );
 
+const log = createLogger('seed');
 const prisma = createDb();
 await mkdir(uploadDir, { recursive: true });
 
@@ -40,7 +42,7 @@ try {
       select: { id: true },
     });
     if (existing) {
-      console.log(`${doc.title}: v1 already present`);
+      log.info({ title: doc.title, type: doc.type }, 'v1 already present, skipped');
       continue;
     }
 
@@ -54,7 +56,7 @@ try {
         data: { currentVersionId: version.id },
       });
     });
-    console.log(`${doc.title}: seeded v1`);
+    log.info({ title: doc.title, type: doc.type, sha256 }, 'seeded v1 (queued)');
   }
 } finally {
   await prisma.$disconnect();

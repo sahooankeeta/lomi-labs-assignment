@@ -18,6 +18,7 @@
     "@anthropic-ai/sdk": "^1.14.0",
     "@lomi/db": "workspace:*",
     "@lomi/extraction": "workspace:*",
+    "@lomi/logger": "workspace:*",
     "@lomi/queue": "workspace:*",
     "@lomi/shared": "workspace:*",
     "bullmq": "^6.7.10",

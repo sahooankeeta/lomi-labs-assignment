@@ -1,6 +1,7 @@
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
-import Fastify from 'fastify';
+import Fastify, { LogController } from 'fastify';
+import { createLogger, type Logger } from '@lomi/logger';
 
 /** Anything the health check can ping. Kept abstract so tests can fake it. */
 export interface Deps {
@@ -9,8 +10,17 @@ export interface Deps {
   close: () => Promise<void>;
 }
 
-export function buildApp(deps: Deps) {
-  const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
+export function buildApp(deps: Deps, log: Logger = createLogger('api')) {
+  const app = Fastify({
+    loggerInstance: log,
+    // No per-request logs; only startup/connection status and errors.
+    logController: new LogController({ disableRequestLogging: true }),
+  });
+
+  // Disabling request logging also silences Fastify's error-handler logs, so log errors here.
+  app.addHook('onError', async (req, _reply, err) => {
+    req.log.error({ err, method: req.method, url: req.url }, 'handler error');
+  });
 
   app.register(cors, { origin: true });
   app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024, files: 1 } });

@@ -21,6 +21,7 @@
     "@lomi/config": "workspace:*"
   },
   "dependencies": {
+    "@lomi/logger": "workspace:*",
     "bullmq": "^6.7.10",
     "ioredis": "^6.1.0"
   }

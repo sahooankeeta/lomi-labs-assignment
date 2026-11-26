@@ -28,5 +28,8 @@ ENV NODE_ENV=production
 
 # 3b. The web app is static files served by nginx, which also proxies /api.
 FROM nginx:1.29-alpine AS web
+# Only warnings and errors from nginx itself (default is notice: a line per worker process).
+RUN sed -i 's/ notice;/ warn;/' /etc/nginx/nginx.conf
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chmod=755 apps/web/docker/40-log-connections.sh /docker-entrypoint.d/40-log-connections.sh
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html

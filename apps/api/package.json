@@ -18,6 +18,7 @@
     "@fastify/cors": "^11.4.3",
     "@fastify/multipart": "^10.1.9",
     "@lomi/db": "workspace:*",
+    "@lomi/logger": "workspace:*",
     "@lomi/queue": "workspace:*",
     "@lomi/shared": "workspace:*",
     "fastify": "^5.12.8",
