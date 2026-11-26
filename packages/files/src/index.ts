@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export interface FileStore {
@@ -8,6 +8,8 @@ export interface FileStore {
   read(key: string): Promise<Uint8Array>;
   stream(key: string): NodeJS.ReadableStream;
 }
+
+const KEY_PATTERN = /^[0-9a-f]{64}\.pdf$/;
 
 /** Content-addressed store on a local directory: key = `<sha256>.pdf`. */
 export class LocalFileStore implements FileStore {
@@ -20,18 +22,33 @@ export class LocalFileStore implements FileStore {
     const target = join(this.dir, key);
     if (await exists(target)) return { key, sha256 };
     // Write beside the target, then rename: readers never see a partial file.
-    const tmp = join(this.dir, `.${key}.${process.pid}.${Date.now()}.tmp`);
-    await writeFile(tmp, bytes);
-    await rename(tmp, target);
+    const tmp = join(this.dir, `.${key}.${randomUUID()}.tmp`);
+    try {
+      await writeFile(tmp, bytes);
+      await rename(tmp, target);
+    } catch (err) {
+      await rm(tmp, { force: true });
+      // A concurrent put of the same bytes may have won; content-addressed, so that is success.
+      if (!(await exists(target))) throw err;
+    }
     return { key, sha256 };
   }
 
   read(key: string): Promise<Uint8Array> {
-    return readFile(join(this.dir, key));
+    try {
+      return readFile(this.pathFor(key));
+    } catch (err) {
+      return Promise.reject(err);
+    }
   }
 
   stream(key: string): NodeJS.ReadableStream {
-    return createReadStream(join(this.dir, key));
+    return createReadStream(this.pathFor(key));
+  }
+
+  private pathFor(key: string): string {
+    if (!KEY_PATTERN.test(key)) throw new Error(`Invalid file key: ${key}`);
+    return join(this.dir, key);
   }
 }
 

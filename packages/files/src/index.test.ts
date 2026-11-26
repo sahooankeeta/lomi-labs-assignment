@@ -27,6 +27,12 @@ describe('LocalFileStore', () => {
     expect(await readdir(dir)).toEqual([a.key]);
   });
 
+  it('survives concurrent puts of the same bytes', async () => {
+    const results = await Promise.all(Array.from({ length: 5 }, () => store.put(bytes)));
+    expect(new Set(results.map((r) => r.key)).size).toBe(1);
+    expect(await readdir(dir)).toEqual([results[0]!.key]);
+  });
+
   it('round-trips bytes', async () => {
     const { key } = await store.put(bytes);
     expect(Buffer.from(await store.read(key))).toEqual(Buffer.from(bytes));
@@ -40,6 +46,11 @@ describe('LocalFileStore', () => {
   });
 
   it('rejects reading a missing key', async () => {
-    await expect(store.read('missing.pdf')).rejects.toThrow();
+    await expect(store.read(`${'0'.repeat(64)}.pdf`)).rejects.toThrow();
+  });
+
+  it('rejects keys that are not a sha256 pdf name', async () => {
+    await expect(store.read('../x.pdf')).rejects.toThrow('Invalid file key');
+    expect(() => store.stream('missing.pdf')).toThrow('Invalid file key');
   });
 });
