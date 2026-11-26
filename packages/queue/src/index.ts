@@ -46,8 +46,8 @@ export function createExtractionQueue(connection: Redis, log?: Logger) {
   const queue = new Queue<ExtractionJob>(EXTRACTION_QUEUE, {
     connection,
     defaultJobOptions: {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2_000 },
+      // Retries belong to the reconciler (it re-enqueues with a new attempt number), not BullMQ.
+      attempts: 1,
       removeOnComplete: 1_000,
       removeOnFail: 1_000,
     },
@@ -59,5 +59,22 @@ export function createExtractionQueue(connection: Redis, log?: Logger) {
   return queue;
 }
 
-/** One job per version: re-adding the same version is a no-op while it's queued. */
-export const extractionJobId = (versionId: string) => `extract:${versionId}`;
+/** One job per version attempt: re-adding the same attempt is a no-op while the job exists. */
+export const extractionJobId = (versionId: string, attempts: number) =>
+  `extract:${versionId}:${attempts}`;
+
+/**
+ * Best-effort enqueue. Postgres is the source of truth, so a failed add is not
+ * an error here: the reconciler re-enqueues any unfinished version.
+ */
+export async function enqueueExtraction(
+  queue: Queue<ExtractionJob>,
+  versionId: string,
+  attempts: number,
+): Promise<void> {
+  try {
+    await queue.add('extract', { versionId }, { jobId: extractionJobId(versionId, attempts) });
+  } catch {
+    // Swallowed on purpose; see above.
+  }
+}

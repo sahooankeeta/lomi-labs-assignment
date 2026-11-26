@@ -25,6 +25,7 @@ RUN pnpm turbo run build --filter=@lomi/${APP}...
 # 3a. Node services (api, worker, db migrate/seed) run straight from the build stage.
 FROM builder AS node-app
 ENV NODE_ENV=production
+COPY fixtures ./fixtures
 
 # 3b. The web app is static files served by nginx, which also proxies /api.
 FROM nginx:1.29-alpine AS web
