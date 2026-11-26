@@ -10,3 +10,7 @@ export type ValueReviewState = z.infer<typeof ValueReviewState>;
 
 export const ReviewAction = z.enum(['approve', 'correct']);
 export type ReviewAction = z.infer<typeof ReviewAction>;
+
+/** Lifecycle of one document version, as stored in Postgres. */
+export const VersionStatus = z.enum(['queued', 'extracting', 'extracted', 'failed', 'superseded']);
+export type VersionStatus = z.infer<typeof VersionStatus>;
