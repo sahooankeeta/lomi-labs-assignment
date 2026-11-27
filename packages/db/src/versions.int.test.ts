@@ -91,7 +91,9 @@ describe('createVersion', () => {
         evidenceEnd: 1,
       },
     ];
-    expect(await finishVersion(db, d.v1, claim.runId, values)).toBe('stale');
+    expect(await finishVersion(db, d.v1, claim.runId, values, { fields: fields.invoice! })).toBe(
+      'stale',
+    );
     expect(await db.extractedValue.count()).toBe(0);
   });
 

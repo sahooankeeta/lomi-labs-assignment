@@ -113,7 +113,7 @@ The UI uses Mantine; the review model and that choice are in [0008](docs/decisio
 
 Postgres is the truth; BullMQ jobs are only hints (`{ versionId }`). A job runs `processVersion`:
 claim (lease) -> parse the PDF once and store the text -> plan chunks -> extract each missing chunk
-(3 at a time) -> merge -> finish. Every write is guarded by the run id, so a run that lost its lease
+(3 at a time) -> merge -> finish. Finish also links each value to the previous version's value for the same field and carries that value's review when its evidence is unchanged. Every write is guarded by the run id, so a run that lost its lease
 writes nothing. The lease is renewed on its own timer, so a slow LLM call cannot lose it.
 
 | Event                   | What happens                                                                                                                          |

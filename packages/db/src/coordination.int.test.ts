@@ -58,6 +58,7 @@ function value(field: string, v: string | null = 'x'): FinalValue {
 }
 const fields = ['vendor', 'total', 'due_date'];
 const allValues = fields.map((f) => value(f));
+const finishOpts = { fields: fields.map((field) => ({ field, type: 'string' as const })) };
 
 async function claimed(id: string, o: { now?: Date } = {}) {
   const r = await claimVersion(db, id, { ...opts, ...o });
@@ -166,13 +167,13 @@ describe('finishVersion', () => {
     const oldRun = await claimed(id);
     const newRun = await claimed(id, { now: new Date(Date.now() + LEASE_MS + 1000) });
 
-    expect(await finishVersion(db, id, oldRun.runId, allValues)).toBe('stale');
+    expect(await finishVersion(db, id, oldRun.runId, allValues, finishOpts)).toBe('stale');
     expect(await db.extractedValue.count()).toBe(0);
     expect((await db.extractionRun.findUniqueOrThrow({ where: { id: oldRun.runId } })).status).toBe(
       'abandoned',
     );
 
-    expect(await finishVersion(db, id, newRun.runId, allValues)).toBe('finished');
+    expect(await finishVersion(db, id, newRun.runId, allValues, finishOpts)).toBe('finished');
     expect(await db.extractedValue.count()).toBe(fields.length);
     const row = await db.documentVersion.findUniqueOrThrow({ where: { id } });
     expect(row).toMatchObject({ status: 'extracted', leaseExpiresAt: null });
@@ -186,8 +187,8 @@ describe('finishVersion', () => {
     const a = await claimed(id);
     const b = await claimed(id, { now: new Date(Date.now() + LEASE_MS + 1000) });
     const results = await Promise.all([
-      finishVersion(db, id, a.runId, allValues),
-      finishVersion(db, id, b.runId, allValues),
+      finishVersion(db, id, a.runId, allValues, finishOpts),
+      finishVersion(db, id, b.runId, allValues, finishOpts),
     ]);
     expect([...results].sort()).toEqual(['finished', 'stale']);
     expect(await db.extractedValue.count()).toBe(fields.length);
@@ -196,8 +197,8 @@ describe('finishVersion', () => {
   it('second finish by the active run is stale and writes nothing more', async () => {
     const id = await makeVersion();
     const r = await claimed(id);
-    expect(await finishVersion(db, id, r.runId, allValues)).toBe('finished');
-    expect(await finishVersion(db, id, r.runId, allValues)).toBe('stale');
+    expect(await finishVersion(db, id, r.runId, allValues, finishOpts)).toBe('finished');
+    expect(await finishVersion(db, id, r.runId, allValues, finishOpts)).toBe('stale');
     expect(await db.extractedValue.count()).toBe(fields.length);
     // a late duplicate must not rewrite the succeeded run as abandoned
     expect((await db.extractionRun.findUniqueOrThrow({ where: { id: r.runId } })).status).toBe(
@@ -208,7 +209,9 @@ describe('finishVersion', () => {
   it('stores a gap value; the DB CHECK rejects value + gap reason together', async () => {
     const id = await makeVersion();
     const r = await claimed(id);
-    expect(await finishVersion(db, id, r.runId, [value('vendor', null)])).toBe('finished');
+    expect(await finishVersion(db, id, r.runId, [value('vendor', null)], finishOpts)).toBe(
+      'finished',
+    );
     expect(await db.extractedValue.findFirstOrThrow({ where: { versionId: id } })).toMatchObject({
       value: null,
       gapReason: 'not found',

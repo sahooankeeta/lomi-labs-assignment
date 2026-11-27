@@ -237,7 +237,10 @@ export async function processVersion(
 
     const perChunk = chunks.map((c) => candidatesByChunk.get(c.chunkIndex)!);
     const merged = mergeCandidates(expected, perChunk, pageOffsets);
-    const outcome = await finishVersion(db, versionId, runId, merged);
+    const outcome = await finishVersion(db, versionId, runId, merged, {
+      // The field types drive the carry-over comparison against the previous version.
+      fields: expected,
+    });
     rlog.info({ outcome }, outcome === 'finished' ? 'finished' : 'finish refused (stale)');
     return outcome;
   } catch (err) {
