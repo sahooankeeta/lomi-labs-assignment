@@ -9,15 +9,18 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --exclude \"**/*.int.test.ts\" --passWithNoTests"
+    "test": "vitest run --exclude \"**/*.int.test.ts\" --passWithNoTests",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "devDependencies": {
-    "@lomi/config": "workspace:*"
+    "@lomi/config": "workspace:*",
+    "form-data": "^4.0.6"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.3",
     "@fastify/multipart": "^10.1.9",
     "@lomi/db": "workspace:*",
+    "@lomi/files": "workspace:*",
     "@lomi/logger": "workspace:*",
     "@lomi/queue": "workspace:*",
     "@lomi/shared": "workspace:*",
