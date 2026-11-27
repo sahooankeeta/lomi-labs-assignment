@@ -10,8 +10,9 @@
  *
  * Uses the REST API through fetch, so it adds no dependency. The key goes in the
  * `x-goog-api-key` header (never in the URL, so it can't leak into logs) and is never printed.
- * Optional: GEMINI_MODEL to pick a model; otherwise `gemini-2.5-flash`, or the first
- * available "flash" model if that one isn't offered to this key.
+ * Optional: GEMINI_MODEL to pick a model; otherwise it tries every `gemini-X.Y-flash` the
+ * key lists, newest first, then the `gemini-flash-latest` alias. A busy model (503/429) is
+ * retried once, then the next one is tried.
  * Not part of the build (tsconfig.build.json only compiles src/).
  */
 import { readFile } from 'node:fs/promises';
@@ -20,7 +21,8 @@ import type { FieldDef } from '@lomi/shared';
 import { extractText, getDocumentProxy } from 'unpdf';
 
 const API = 'https://generativelanguage.googleapis.com/v1beta';
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+// Google's moving alias for its current flash model; used if no versioned flash model is listed.
+const FALLBACK_MODEL = 'gemini-flash-latest';
 
 const FIELDS: FieldDef[] = [
   { field: 'invoice_number', type: 'string' },
@@ -51,6 +53,21 @@ const RESPONSE_SCHEMA = {
   required: ['fields'],
 };
 
+/** An HTTP error from the Gemini API; `busy` marks the temporary ones worth retrying. */
+class GeminiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+  get busy(): boolean {
+    return this.status === 429 || this.status === 503;
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function gemini<T>(apiKey: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API}/${path}`, {
     method: body === undefined ? 'GET' : 'POST',
@@ -61,8 +78,9 @@ async function gemini<T>(apiKey: string, path: string, body?: unknown): Promise<
   const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
   if (!res.ok) {
     // Google's error message says what's wrong (invalid key, quota, unknown model).
-    throw new Error(
+    throw new GeminiError(
       `${path.split('?')[0]} → HTTP ${res.status}: ${json.error?.message ?? res.statusText}`,
+      res.status,
     );
   }
   return json as T;
@@ -72,29 +90,32 @@ interface ModelList {
   models?: { name: string; supportedGenerationMethods?: string[] }[];
 }
 
-async function pickModel(apiKey: string): Promise<string> {
+/** Models to try, in order: just GEMINI_MODEL if set, else every flash model newest first. */
+async function modelsToTry(apiKey: string): Promise<string[]> {
   const { models = [] } = await gemini<ModelList>(apiKey, 'models?pageSize=1000');
   const usable = models
     .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
     .map((m) => m.name.replace(/^models\//, ''));
   console.log(`key OK: ${usable.length} models support generateContent`);
-  console.log(
-    `  e.g. ${usable
-      .filter((m) => m.startsWith('gemini'))
-      .slice(0, 8)
-      .join(', ')}`,
-  );
+
+  // Plain stable flash models (`gemini-3.8-flash`, not `-lite`/`-preview-tts`/...), newest first.
+  // The list still shows retired versions (e.g. 2.5 is refused for new keys), so newest wins.
+  const version = (m: string) => Number(/^gemini-(\d+(?:\.\d+)?)-flash$/.exec(m)?.[1] ?? NaN);
+  const flash = usable
+    .filter((m) => !Number.isNaN(version(m)))
+    .sort((a, b) => version(b) - version(a));
+  console.log(`  flash models: ${flash.join(', ') || '(none)'}`);
 
   const wanted = process.env.GEMINI_MODEL?.trim();
   if (wanted) {
     if (!usable.includes(wanted))
       throw new Error(`GEMINI_MODEL=${wanted} is not available to this key`);
-    return wanted;
+    return [wanted];
   }
-  if (usable.includes(DEFAULT_MODEL)) return DEFAULT_MODEL;
-  const flash = usable.find((m) => m.includes('flash') && !/image|tts|live|audio/.test(m));
-  if (!flash) throw new Error('no "flash" model available; set GEMINI_MODEL to one listed above');
-  return flash;
+  const list = usable.includes(FALLBACK_MODEL) ? [...flash, FALLBACK_MODEL] : flash;
+  if (list.length === 0)
+    throw new Error('no flash model found; set GEMINI_MODEL to one from the list');
+  return list;
 }
 
 interface GenerateResponse {
@@ -107,31 +128,53 @@ async function main(): Promise<void> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set (add it to .env, then re-run)');
 
-  const model = await pickModel(apiKey);
-  console.log(`model: ${model}, prompt ${PROMPT_VERSION}`);
-
+  const models = await modelsToTry(apiKey);
   const file = new URL('../../../fixtures/documents/invoice-001.pdf', import.meta.url);
   const pdf = await getDocumentProxy(new Uint8Array(await readFile(file)));
   const { text } = joinPages((await extractText(pdf, { mergePages: false })).text);
 
-  const { totalTokens } = await gemini<{ totalTokens: number }>(
-    apiKey,
-    `models/${model}:countTokens`,
-    { contents: [{ role: 'user', parts: [{ text }] }] },
-  );
-  console.log(`countTokens: ${totalTokens}`);
-
   const prompt = buildPrompt('invoice', FIELDS, text, { chunkIndex: 0, chunkCount: 1 });
-  const started = Date.now();
-  const res = await gemini<GenerateResponse>(apiKey, `models/${model}:generateContent`, {
-    systemInstruction: { parts: [{ text: prompt.system }] },
-    contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
-    generationConfig: {
-      temperature: 0,
-      responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
-    },
-  });
+
+  // Free-tier models are often briefly overloaded (503), rate-limited (429) or slow (timeout):
+  // retry once, then move on to the next model. A 404 (model retired for this key) skips
+  // straight to the next one. Any other error (bad key, bad request) stops at once.
+  let res: GenerateResponse | undefined;
+  let started = 0;
+  for (const model of models) {
+    console.log(`model: ${model}, prompt ${PROMPT_VERSION}`);
+    for (let attempt = 1; attempt <= 2 && !res; attempt++) {
+      try {
+        const { totalTokens } = await gemini<{ totalTokens: number }>(
+          apiKey,
+          `models/${model}:countTokens`,
+          { contents: [{ role: 'user', parts: [{ text }] }] },
+        );
+        if (attempt === 1) console.log(`countTokens: ${totalTokens}`);
+        started = Date.now();
+        res = await gemini<GenerateResponse>(apiKey, `models/${model}:generateContent`, {
+          systemInstruction: { parts: [{ text: prompt.system }] },
+          contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: 'application/json',
+            responseSchema: RESPONSE_SCHEMA,
+          },
+        });
+      } catch (err) {
+        if (err instanceof GeminiError && err.status === 404 && models.length > 1) {
+          console.log('  not available to this key, trying next model');
+          break;
+        }
+        const timedOut = err instanceof Error && err.name === 'TimeoutError';
+        if (!timedOut && !(err instanceof GeminiError && err.busy)) throw err;
+        const why = timedOut ? 'timed out' : `busy (HTTP ${(err as GeminiError).status})`;
+        console.log(`  ${why}${attempt === 1 ? ', retrying in 3 s' : ', trying next model'}`);
+        if (attempt === 1) await sleep(3_000);
+      }
+    }
+    if (res) break;
+  }
+  if (!res) throw new Error(`no model answered: ${models.join(', ')}; try again later`);
 
   const candidate = res.candidates?.[0];
   const raw = candidate?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
