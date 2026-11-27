@@ -18,6 +18,16 @@ stuck in `extracting`, and a re-run must never produce duplicate or interleaved 
 - **Attempt cap:** attempt 4 fails the version visibly instead of looping.
 - **Reconciler:** every 10 s, re-enqueues `queued` and expired-lease versions.
 
+## Where the lease helps
+
+- **Crash, kill or OOM mid-extraction:** nobody renews, the lease expires, and the reconciler resumes the version.
+- **`FLUSHALL` or a lost job:** Postgres still records `extracting`, so the job is rebuilt from it after expiry.
+- **Stalled worker:** another run takes over, the stalled run's renewal fails, and it stops. No double writes.
+- **Duplicate jobs:** only one claim succeeds while the lease is live.
+
+Code: `LEASE_MS` and `renewLease` in `packages/db/src/coordination.ts`, the renewal timer in
+`apps/worker/src/pipeline.ts`, and `findReconcilable` with `apps/worker/src/reconciler.ts`.
+
 ## Alternatives
 
 - Heartbeat rows per worker. Rejected: the lease is enough.

@@ -1,11 +1,6 @@
-import type {
-  DocumentDetailDto,
-  DocumentType,
-  ExpectedFields,
-  ValueDto,
-  ValueReviewState,
-} from '@lomi/shared';
+import type { DocumentDetailDto, DocumentType, ExpectedFields, ValueDto } from '@lomi/shared';
 import type { Db } from './client.js';
+import { loadValuesWithLatestReview, progressOf, reviewStateOf } from './value-rows.js';
 
 /**
  * Document lifecycle reads and writes used by the api and the seed script.
@@ -78,7 +73,7 @@ export async function createDocumentWithV1(
 
 /**
  * The read model behind `GET /documents/:id`: one version (the current one, or
- * `versionNo` when given) with its extracted values and their review state.
+ * `versionNo` when given) with its extracted values and their review state and progress counts.
  *
  * - Returns `null` when the document or the requested version doesn't exist.
  * - `status` is the shown version's own status, so an old version reads `superseded`.
@@ -104,11 +99,7 @@ export async function getDocumentDetail(
         });
   if (!version) return null;
 
-  // Reviews are append-only; the newest row is the value's current review.
-  const rows = await db.extractedValue.findMany({
-    where: { versionId: version.id },
-    include: { reviews: { orderBy: { createdAt: 'desc' }, take: 1 } },
-  });
+  const rows = await loadValuesWithLatestReview(db, [version.id]);
 
   const defs = opts.fields[document.type];
   const values: ValueDto[] = [];
@@ -116,15 +107,7 @@ export async function getDocumentDetail(
     const row = rows.find((r) => r.field === def.field);
     if (!row) continue;
     const review = row.reviews[0] ?? null;
-    // Precedence: a review on this version wins over one carried over from the
-    // previous version; with neither, the value still needs a human.
-    const reviewState: ValueReviewState = review
-      ? review.action === 'approve'
-        ? 'approved'
-        : 'corrected'
-      : row.carriedReviewId
-        ? 'carried_over'
-        : 'pending';
+    const reviewState = reviewStateOf(row);
     values.push({
       id: row.id,
       field: row.field,
@@ -162,6 +145,7 @@ export async function getDocumentDetail(
       createdAt: version.createdAt.toISOString(),
     },
     values,
+    progress: progressOf(rows, defs),
   };
 }
 

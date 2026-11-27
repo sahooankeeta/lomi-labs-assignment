@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: Phase 1 complete (ingest and extraction).** Upload a PDF, get values with verbatim evidence, page and offsets, or gaps with reasons; survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Not yet built: version upload and carry-over, review and progress routes, the UI beyond the skeleton. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
+> **Status: Phase 2 complete (review UI and routes).** Phase 1 (ingest and extraction) survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Phase 2 adds review routes (approve, correct, confirm absent), progress, and a React UI with the PDF beside the values. Verified in a browser on the dev servers (`pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, UI on :5173); the compose web image now serves the pdf.js worker with the right MIME type, but the worker and migrate images have not been rebuilt with Phase 2 yet (see "Review UI"). Not yet built: version upload and carry-over. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
 PDFs go in, an LLM (Google Gemini; a fake extractor for tests) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -44,6 +44,8 @@ pnpm db:seed      # builds deps, runs migrations, then seeds
 pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
 ```
 
+Relative `UPLOAD_DIR` and `FIXTURES_DIR` (the `./uploads` and `./fixtures` in `.env.example`) resolve against the repo root, not each app's folder, so the api, worker and seed share one `uploads/`. Absolute paths (compose uses `/data/uploads`) are used as given.
+
 ### Checks
 
 ```sh
@@ -77,11 +79,15 @@ The Gemini extractor runs on Google's free tier, which has rate limits and model
 
 Errors are always `{ "error": "<code>", "message": "..." }`. The api only validates, writes to Postgres and enqueues a hint; it never parses PDFs or calls the LLM.
 
-| Route                       | Success                                                                                | Errors                                                                             |
-| --------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `POST /documents`           | `201` new document (v1 `queued`); `200` the existing one if the same file was uploaded | `400` bad `type`, no file, or not a PDF; `413` over 20 MB                          |
-| `GET /documents/:id`        | `200` document, current version (or `?version=N`) and its values                       | `400` id not a UUID or bad `version`; `404` unknown document or version            |
-| `POST /documents/:id/retry` | `202` failed version back to `queued`                                                  | `400` id not a UUID; `404` unknown document; `409` current version is not `failed` |
+| Route                         | Success                                                                                                                                      | Errors                                                                                                                                                             |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /documents`             | `201` new document (v1 `queued`); `200` the existing one if the same file was uploaded                                                       | `400` bad `type`, no file, or not a PDF; `413` over 20 MB                                                                                                          |
+| `GET /documents/:id`          | `200` document, current version (or `?version=N`) and its values                                                                             | `400` id not a UUID or bad `version`; `404` unknown document or version                                                                                            |
+| `POST /documents/:id/retry`   | `202` failed version back to `queued`                                                                                                        | `400` id not a UUID; `404` unknown document; `409` current version is not `failed`                                                                                 |
+| `GET /documents`              | `200` every document, newest first, with its current version's status and review progress                                                    | none                                                                                                                                                               |
+| `GET /documents/:id/progress` | `200` review counts (`pending`, `approved`, `corrected`, `carried_over`, `gaps`, `total`) of the current version                             | `400` id not a UUID; `404` unknown document                                                                                                                        |
+| `POST /values/:id/review`     | `201` review appended (`{ "action": "approve" }` or `{ "action": "correct", "value", "note"? }`); returns the value's new state and progress | `400` id not a UUID, bad body, or a correction that is not valid for the field's type; `404` unknown value; `409` value is not of the current, `extracted` version |
+| `GET /versions/:id/file`      | `200` the version's PDF, inline, cached as immutable                                                                                         | `400` id not a UUID; `404` unknown version or file missing from the store                                                                                          |
 
 ```sh
 curl -F type=invoice -F file=@fixtures/documents/invoice-001.pdf localhost:3000/documents
@@ -89,6 +95,19 @@ curl -F type=invoice -F file=@fixtures/documents/invoice-001.pdf localhost:3000/
 curl localhost:3000/documents/<uuid>
 curl -X POST localhost:3000/documents/<uuid>/retry
 ```
+
+## Review UI
+
+Run `pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, then open http://localhost:5173. This is where the flow below was verified in a browser; the api starts and serves seeded PDFs with the stock relative paths from `.env.example`.
+
+For the compose stack (http://localhost:8080), rebuild the images one service at a time first, so the new UI is served: `docker compose build api`, then `worker`, `web`, `migrate`, then `docker compose up -d`. On :8080, the pdf.js worker (`assets/pdf.worker.*.mjs`) is checked to come back as `application/javascript` and `/api/documents` to return JSON; the full flow has not been clicked through there in a browser.
+
+1. **List.** Every document with its status and review progress. Upload a PDF with the type picker; the list polls while anything is queued or processing and stops once all are extracted. A non-PDF shows `file is not a PDF`.
+2. **Detail.** Click a document. Values are grouped into cards (Needs review, Carried over, Done), with the evidence quote and "page N". The header shows progress.
+3. **Approve or correct.** Approve moves a card to Done. Correct opens an inline field; a value that does not fit the field type (`abc` for a money field) shows `"abc" is not a valid money`. A corrected card shows the new value with the original struck through. A gap offers "Confirm absent".
+4. **Evidence.** Clicking a value jumps the PDF to its page without switching tabs; if the Text tab is open, it scrolls to the quote, highlighted in `<mark>`.
+
+The UI uses Mantine; the review model and that choice are in [0008](docs/decisions/0008-reviews.md).
 
 ## Worker
 
@@ -151,7 +170,7 @@ fixtures/      Sample PDFs and manifests from the assignment.
 | Queue        | BullMQ on Redis 7        | Coordinates work only. Postgres is the source of truth                                                                                                                                                                                               |
 | LLM          | Gemini (default), fake   | JSON-schema structured outputs; the same evidence check applies to both ([0005](docs/decisions/0005-structured-outputs-and-model.md))                                                                                                                |
 | PDF text     | unpdf                    | Maintained, pure JS                                                                                                                                                                                                                                  |
-| UI           | Vite + React 19          | Plain SPA, no SSR needed                                                                                                                                                                                                                             |
+| UI           | Vite + React 19, Mantine | Plain SPA, no SSR needed. Mantine: the owner asked for a component library, it needs no Tailwind setup, and it supports React 19                                                                                                                     |
 | Tests / lint | Vitest, ESLint, Prettier |                                                                                                                                                                                                                                                      |
 
 ## Verify
@@ -189,10 +208,12 @@ Full model in `packages/db/prisma/schema.prisma`.
 
 ## Decisions
 
-Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values.
+Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values, reviews ([0008](docs/decisions/0008-reviews.md)).
 
 ## TODO (documented as they're decided)
 
+- Delete a document (deferred). The plan is a hard delete of the document and all its versions in one locked transaction, keeping PDFs another document still uses. The worker would check before each chunk that its run still owns the version, so a delete stops LLM calls at the next chunk; in-flight calls are cut by the next lease renewal.
+- Draft → submit review flow. Decisions held as drafts in localStorage per version, a sticky submit bar, a before/after summary, and an all-or-nothing `POST /documents/:id/reviews`. Deferred: the MVP saves each click.
 - What happens when a new version arrives mid-extraction
 - How "unchanged evidence" is matched across versions
 - Polling vs streaming in the UI

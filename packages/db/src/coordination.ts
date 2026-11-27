@@ -16,7 +16,32 @@ import type { ChunkResult, VersionChunk } from './generated/client.js';
  * next, always after the call returns.
  */
 
-/** How long a claim or renewal keeps the version before another worker may take it. */
+/**
+ * How long a claim or renewal keeps the version before another worker may take it.
+ *
+ * **The lease** is a worker's time-limited claim on one version, stored on the version
+ * row: `activeRunId` (which run owns it) + `leaseExpiresAt` (until when). The owning
+ * worker renews it every 10 s (`renewLease`, from a timer in the worker's pipeline) while
+ * it works; if renewals stop, the lease runs out and the version becomes claimable again.
+ *
+ * Where it helps (each case ends with the version completed or visibly retryable):
+ * 1. **Worker crash / kill / OOM mid-extraction:** nobody renews, the lease expires, the
+ *    reconciler (`findReconcilable`) re-enqueues it and the next claim resumes from the
+ *    first unfinished chunk. Without it the version would sit in `extracting` forever.
+ * 2. **Redis `FLUSHALL` / lost job:** Postgres still says `extracting` + lease, so once
+ *    the lease expires the reconciler rebuilds the job from Postgres.
+ * 3. **A stalled worker** (GC pause, frozen container, network blip) that misses renewals:
+ *    another worker may take over with a new `activeRunId`; when the stalled one wakes,
+ *    `renewLease` returns false and it stops, and every guarded write rejects it, so two
+ *    runs never write values for one version.
+ * 4. **Duplicate jobs** (reconciler + retry, two workers): while a live lease exists only
+ *    one claim succeeds; the rest get `skipped`.
+ *
+ * Not the lease's job: a graceful SIGTERM hands the version back at once (`handOffVersion`)
+ * instead of waiting for expiry. 30 s lease / 10 s renewal lets a worker miss two
+ * renewals before losing its claim; a crashed run is picked up again in about 40 s
+ * (lease + one reconciler tick). See docs/decisions/0002-lease-claim-and-reconciler.md.
+ */
 export const LEASE_MS = 30_000;
 /** A version whose lease expired this many times is failed instead of claimed again. */
 export const MAX_ATTEMPTS = 3;
@@ -119,6 +144,10 @@ export async function claimVersion(
  * Pushes the lease out to now + `leaseMs`. Returns `false` when `runId` is no longer
  * the active run of an `extracting` version (lease taken over, finished, failed): the
  * worker must stop and write nothing more.
+ *
+ * Called every 10 s by the worker while it runs, so a live worker never loses its claim
+ * (cases 1-4 in `LEASE_MS`). A `false` here is how a stalled worker (case 3) learns it
+ * was replaced: the pipeline aborts its in-flight LLM calls and reports `stale`.
  */
 export async function renewLease(
   db: Db,
@@ -211,6 +240,10 @@ export async function handOffVersion(db: Db, versionId: string, runId: string): 
  * Versions that need a (new) job: `queued`, or `extracting` with an expired lease. The
  * reconciler enqueues one `extract-<id>-<attempts>` job for each; `claimVersion` decides
  * whether the job actually runs, so over-reporting here is harmless.
+ *
+ * An expired lease means the worker that held it crashed, was killed, or stalled past
+ * 30 s, or its job vanished with a Redis flush (`LEASE_MS` cases 1-3). This query is
+ * where those versions are found again.
  */
 export async function findReconcilable(
   db: Db,

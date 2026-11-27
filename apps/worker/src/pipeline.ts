@@ -113,7 +113,11 @@ export async function processVersion(
     if (deps.signal?.aborted) throw deps.signal.reason;
   };
 
-  // Lease renewal runs on its own timer, not between chunks: one LLM call can take minutes
+  // Lease renewal (what a lease is and where it helps: `LEASE_MS` in @lomi/db coordination).
+  // Renewing every 10 s keeps this live run's claim, so the reconciler won't treat the
+  // version as crashed; a failed renewal means another run took over (we stalled past the
+  // lease), so we abort in-flight LLM calls via `lost` and write nothing more.
+  // It runs on its own timer, not between chunks: one LLM call can take minutes
   // (retries and model fallback), far longer than the lease, and the lease must stay alive
   // throughout or another worker would take the version mid-call.
   let renewing = false;

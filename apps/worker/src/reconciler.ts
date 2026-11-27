@@ -8,7 +8,9 @@ import { errInfo, type Logger } from '@lomi/logger';
  * Why it exists: Postgres is the source of truth and a BullMQ job is only a hint. A hint
  * is lost when the api's enqueue fails, when Redis is flushed or restarted, or when a
  * worker dies mid-run. This loop repairs all of those by re-deriving the work list from
- * Postgres. Over-enqueueing is harmless: job ids include the attempt number, so a
+ * Postgres. A dead or stalled worker is detected through its lease: it stops renewing, the
+ * lease expires after 30 s, and the next pass re-enqueues the version (see `LEASE_MS` in
+ * @lomi/db for the cases the lease covers). Over-enqueueing is harmless: job ids include the attempt number, so a
  * duplicate add is a no-op, and `claimVersion` turns any duplicate that runs into `skipped`.
  *
  * Passes never overlap and never hang forever. During a Redis outage the queue's `add`
