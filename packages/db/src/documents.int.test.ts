@@ -105,6 +105,14 @@ describe('getDocumentDetail', () => {
     ]);
     expect(d!.values[1]!.latestReview).toMatchObject({ action: 'correct', correctedValue: '11' });
     expect(d!.values[2]!.id).toBe(due.id);
+    expect(d!.progress).toEqual({
+      pending: 1,
+      approved: 1,
+      corrected: 1,
+      carried_over: 0,
+      gaps: 0,
+      total: 3,
+    });
   });
 
   it('reports carried_over when a carried review is set and no own review exists', async () => {

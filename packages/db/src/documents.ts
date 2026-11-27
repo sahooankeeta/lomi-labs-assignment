@@ -1,10 +1,5 @@
-import type {
-  DocumentDetailDto,
-  DocumentType,
-  ExpectedFields,
-  ValueDto,
-  ValueReviewState,
-} from '@lomi/shared';
+import { computeProgress, deriveReviewState } from '@lomi/shared';
+import type { DocumentDetailDto, DocumentType, ExpectedFields, ValueDto } from '@lomi/shared';
 import type { Db } from './client.js';
 
 /**
@@ -78,7 +73,7 @@ export async function createDocumentWithV1(
 
 /**
  * The read model behind `GET /documents/:id`: one version (the current one, or
- * `versionNo` when given) with its extracted values and their review state.
+ * `versionNo` when given) with its extracted values and their review state and progress counts.
  *
  * - Returns `null` when the document or the requested version doesn't exist.
  * - `status` is the shown version's own status, so an old version reads `superseded`.
@@ -116,15 +111,11 @@ export async function getDocumentDetail(
     const row = rows.find((r) => r.field === def.field);
     if (!row) continue;
     const review = row.reviews[0] ?? null;
-    // Precedence: a review on this version wins over one carried over from the
-    // previous version; with neither, the value still needs a human.
-    const reviewState: ValueReviewState = review
-      ? review.action === 'approve'
-        ? 'approved'
-        : 'corrected'
-      : row.carriedReviewId
-        ? 'carried_over'
-        : 'pending';
+    // Own review beats a carried one; see deriveReviewState.
+    const reviewState = deriveReviewState({
+      latestReviewAction: review?.action ?? null,
+      carriedReviewId: row.carriedReviewId,
+    });
     values.push({
       id: row.id,
       field: row.field,
@@ -162,6 +153,9 @@ export async function getDocumentDetail(
       createdAt: version.createdAt.toISOString(),
     },
     values,
+    progress: computeProgress(
+      values.map((v) => ({ reviewState: v.reviewState, isGap: v.value === null })),
+    ),
   };
 }
 

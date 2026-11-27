@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DocumentType, FieldType } from './fields.js';
 import { ReviewAction, ValueReviewState, VersionStatus } from './status.js';
+import { ProgressDto } from './review.js';
 
 export const UploadFields = z.object({
   type: DocumentType,
@@ -59,6 +60,8 @@ export const DocumentDetailDto = z.object({
   status: VersionStatus,
   version: VersionDto,
   values: z.array(ValueDto),
+  /** Review progress of the shown version's values. */
+  progress: ProgressDto,
 });
 export type DocumentDetailDto = z.infer<typeof DocumentDetailDto>;
 
@@ -70,3 +73,19 @@ export const DocumentSummaryDto = z.object({
   status: VersionStatus,
 });
 export type DocumentSummaryDto = z.infer<typeof DocumentSummaryDto>;
+
+/** Answer to submitting a review: the stored review plus the value's new state and the version's progress. */
+export const ReviewResultDto = z.object({
+  review: ReviewDto,
+  reviewState: ValueReviewState,
+  progress: ProgressDto,
+});
+export type ReviewResultDto = z.infer<typeof ReviewResultDto>;
+
+/** One row of the document list: the summary plus review progress and creation time. */
+export const DocumentListItemDto = DocumentSummaryDto.extend({
+  progress: ProgressDto,
+  /** ISO 8601 */
+  createdAt: z.string(),
+});
+export type DocumentListItemDto = z.infer<typeof DocumentListItemDto>;
