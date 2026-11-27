@@ -176,7 +176,9 @@ export type RetryResult =
  *
  * The status check is part of the UPDATE (`where status = 'failed'`), so two retries at
  * once produce one `retried` and one `not_failed`, never a double reset. The caller
- * enqueues the job (`extract:<versionId>:0`) after this returns `retried`.
+ * enqueues the job (`extract:<versionId>:0`) after this returns `retried`. That id may
+ * equal an earlier finished job's; the queue removes finished jobs, and if the add still
+ * collides with a job that is active, the reconciler re-adds it within seconds.
  */
 export async function retryCurrentVersion(db: Db, documentId: string): Promise<RetryResult> {
   const document = await db.document.findUnique({

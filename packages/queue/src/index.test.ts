@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractionJobId } from './index.js';
+import { extractionJobId, extractionJobOptions } from './index.js';
 
 describe('extractionJobId', () => {
   it('carries the attempt number and has exactly 3 colon-separated parts', () => {
@@ -7,5 +7,12 @@ describe('extractionJobId', () => {
     expect(extractionJobId(id, 2)).toBe(`extract:${id}:2`);
     // BullMQ rejects custom job ids containing ':' unless there are exactly 3 parts.
     expect(extractionJobId(id, 2).split(':')).toHaveLength(3);
+  });
+});
+
+describe('extractionJobOptions', () => {
+  it('removes finished jobs so a reused job id (handoff, retry) can be enqueued again', () => {
+    expect(extractionJobOptions.removeOnComplete).toBe(true);
+    expect(extractionJobOptions.removeOnFail).toBe(true);
   });
 });

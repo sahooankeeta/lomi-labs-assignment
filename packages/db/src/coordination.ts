@@ -182,7 +182,11 @@ export async function failVersion(
  * take it immediately, and marks the run `abandoned`. `attempts` is decremented so a
  * planned handoff doesn't use up the version's attempt budget. Returns `false` and
  * changes nothing for a stale run. The caller enqueues a new job
- * (`extract:<versionId>:<attempts>`) after `true`; the reconciler covers a lost hint.
+ * (`extract:<versionId>:<attempts>`) after `true`. Because `attempts` went back down, that
+ * id can equal the job this worker is still running, and BullMQ drops an add whose id is
+ * still active. That is fine: once the running job finishes and is removed, the reconciler
+ * re-adds it within seconds, and a double delivery is harmless since `claimVersion`
+ * returns `skipped` for a live lease.
  */
 export async function handOffVersion(db: Db, versionId: string, runId: string): Promise<boolean> {
   return db.$transaction(async (tx) => {
@@ -235,14 +239,21 @@ export interface ChunkPlan {
 }
 
 /**
- * Stores the chunk plan, written once per version: existing chunk rows are kept
- * (`skipDuplicates`) and the token totals are set only while null. A resumed or
- * duplicate run therefore always sees the first run's plan, so cached chunk results
- * still line up with their chunk indexes.
+ * Stores the chunk plan, written once per version, all or nothing. The guarded UPDATE
+ * that sets the token totals (only while null) decides who wrote first: only that call
+ * inserts chunk rows, so a later plan (even a longer one) can't add extra indexes next to
+ * the first plan's rows. A resumed or duplicate run therefore always sees the first
+ * run's plan, so cached chunk results still line up with their chunk indexes.
  */
 export async function saveChunkPlan(db: Db, versionId: string, plan: ChunkPlan): Promise<void> {
-  await db.$transaction([
-    db.versionChunk.createMany({
+  await db.$transaction(async (tx) => {
+    const { count } = await tx.documentVersion.updateMany({
+      where: { id: versionId, totalTokens: null },
+      data: { totalTokens: plan.totalTokens, charsPerToken: plan.charsPerToken },
+    });
+    // A plan already exists: leave it untouched.
+    if (count === 0) return;
+    await tx.versionChunk.createMany({
       data: plan.chunks.map((c) => ({
         versionId,
         chunkIndex: c.index,
@@ -252,13 +263,8 @@ export async function saveChunkPlan(db: Db, versionId: string, plan: ChunkPlan):
         firstPage: c.firstPage,
         lastPage: c.lastPage,
       })),
-      skipDuplicates: true,
-    }),
-    db.documentVersion.updateMany({
-      where: { id: versionId, totalTokens: null },
-      data: { totalTokens: plan.totalTokens, charsPerToken: plan.charsPerToken },
-    }),
-  ]);
+    });
+  });
 }
 
 /**

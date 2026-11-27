@@ -333,6 +333,31 @@ describe('chunk plan and results', () => {
     });
   });
 
+  it('a longer, different second plan does not add chunks to the first plan', async () => {
+    const id = await makeVersion();
+    await saveChunkPlan(db, id, plan);
+    await saveChunkPlan(db, id, {
+      chunks: [
+        { index: 0, start: 0, end: 5, tokens: 1, firstPage: 1, lastPage: 1 },
+        { index: 1, start: 5, end: 10, tokens: 1, firstPage: 1, lastPage: 1 },
+        { index: 2, start: 10, end: 15, tokens: 1, firstPage: 1, lastPage: 1 },
+      ],
+      totalTokens: 3,
+      charsPerToken: 5,
+    });
+    const { chunks } = await getChunkState(db, id, 'p1');
+    expect(
+      chunks.map(({ chunkIndex, start, end, tokens, firstPage, lastPage }) => ({
+        index: chunkIndex,
+        start,
+        end,
+        tokens,
+        firstPage,
+        lastPage,
+      })),
+    ).toEqual(plan.chunks);
+  });
+
   it('saveChunkResult twice with the same key keeps one row; getChunkState filters by prompt', async () => {
     const id = await makeVersion();
     const r = await claimed(id);
