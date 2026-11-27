@@ -46,7 +46,7 @@ export const extractionJobOptions = {
   // Retries belong to the reconciler (it re-enqueues with a new attempt number), not BullMQ.
   attempts: 1,
   // Finished jobs are dropped at once. BullMQ ignores an add whose job id still exists, and job
-  // ids are reused (handoff and retry both reset attempts, so `extract:<id>:0` comes back), so a
+  // ids are reused (handoff and retry both reset attempts, so `extract-<id>-0` comes back), so a
   // retained finished job would strand the version in `queued`. Dedupe must only cover
   // waiting/active jobs. History lives in Postgres `extraction_runs`.
   removeOnComplete: true,
@@ -65,22 +65,21 @@ export function createExtractionQueue(connection: Redis, log?: Logger) {
   return queue;
 }
 
-/** One job per version attempt: re-adding the same attempt is a no-op while the job is waiting or active. */
+/**
+ * One job per version attempt: re-adding the same attempt is a no-op while the job is waiting or active.
+ * No `:` in the id: BullMQ only accepts one through a legacy 3-part exemption slated for removal.
+ */
 export const extractionJobId = (versionId: string, attempts: number) =>
-  `extract:${versionId}:${attempts}`;
+  `extract-${versionId}-${attempts}`;
 
 /**
- * Best-effort enqueue. Postgres is the source of truth, so a failed add is not
- * an error here: the reconciler re-enqueues any unfinished version.
+ * Adds the job for one version attempt. Rejects on add failure (e.g. Redis unreachable):
+ * callers log and rely on the reconciler, which re-enqueues any unfinished version from Postgres.
  */
 export async function enqueueExtraction(
   queue: Queue<ExtractionJob>,
   versionId: string,
   attempts: number,
 ): Promise<void> {
-  try {
-    await queue.add('extract', { versionId }, { jobId: extractionJobId(versionId, attempts) });
-  } catch {
-    // Swallowed on purpose; see above.
-  }
+  await queue.add('extract', { versionId }, { jobId: extractionJobId(versionId, attempts) });
 }

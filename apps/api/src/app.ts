@@ -27,9 +27,9 @@ export interface Deps {
   /** Expected fields per document type (`expected-fields.json`), for the read model's field order. */
   fields: ExpectedFields;
   /**
-   * Hints the worker that a version needs extraction (job `extract:<versionId>:<attempts>`).
-   * Never throws: the real one wraps `enqueueExtraction`, which swallows Redis errors because
-   * the worker's reconciler re-enqueues any unfinished version.
+   * Hints the worker that a version needs extraction (job `extract-<versionId>-<attempts>`).
+   * May reject (the real one is `enqueueExtraction`); the route logs it and does not wait,
+   * because the worker's reconciler re-enqueues any unfinished version.
    */
   enqueue: (versionId: string, attempts: number) => Promise<void>;
 }

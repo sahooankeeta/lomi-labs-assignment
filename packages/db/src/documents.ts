@@ -26,7 +26,7 @@ export interface CreateDocumentInput {
 export interface CreateDocumentResult {
   documentId: string;
   versionId: string;
-  /** The version's attempt count; part of the BullMQ job id (`extract:<versionId>:<attempts>`). */
+  /** The version's attempt count; part of the BullMQ job id (`extract-<versionId>-<attempts>`). */
   attempts: number;
   /** `false` when an identical upload already existed and its ids were returned instead. */
   created: boolean;
@@ -176,7 +176,7 @@ export type RetryResult =
  *
  * The status check is part of the UPDATE (`where status = 'failed'`), so two retries at
  * once produce one `retried` and one `not_failed`, never a double reset. The caller
- * enqueues the job (`extract:<versionId>:0`) after this returns `retried`. That id may
+ * enqueues the job (`extract-<versionId>-0`) after this returns `retried`. That id may
  * equal an earlier finished job's; the queue removes finished jobs, and if the add still
  * collides with a job that is active, the reconciler re-adds it within seconds.
  */

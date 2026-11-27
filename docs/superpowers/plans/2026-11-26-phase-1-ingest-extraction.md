@@ -151,7 +151,7 @@ export const TEST_DATABASE_URL: string; // process.env.TEST_DATABASE_URL ?? 'pos
 export function prepareTestDatabase(): Promise<void>; // CREATE DATABASE if missing, then `prisma migrate deploy` against it
 export function truncateAll(db: Db): Promise<void>;   // TRUNCATE every app table ... RESTART IDENTITY CASCADE
 // @lomi/queue
-export const extractionJobId: (versionId: string, attempts: number) => string; // `extract:${versionId}:${attempts}`
+export const extractionJobId: (versionId: string, attempts: number) => string; // `extract-${versionId}-${attempts}`
 export function enqueueExtraction(queue: Queue<ExtractionJob>, versionId: string, attempts: number): Promise<void>; // add with jobId; never throws (logs nothing, returns) — callers rely on the reconciler
 ```
 

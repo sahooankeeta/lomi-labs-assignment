@@ -182,7 +182,7 @@ export async function failVersion(
  * take it immediately, and marks the run `abandoned`. `attempts` is decremented so a
  * planned handoff doesn't use up the version's attempt budget. Returns `false` and
  * changes nothing for a stale run. The caller enqueues a new job
- * (`extract:<versionId>:<attempts>`) after `true`. Because `attempts` went back down, that
+ * (`extract-<versionId>-<attempts>`) after `true`. Because `attempts` went back down, that
  * id can equal the job this worker is still running, and BullMQ drops an add whose id is
  * still active. That is fine: once the running job finishes and is removed, the reconciler
  * re-adds it within seconds, and a double delivery is harmless since `claimVersion`
@@ -210,7 +210,7 @@ export async function handOffVersion(db: Db, versionId: string, runId: string): 
 
 /**
  * Versions that need a (new) job: `queued`, or `extracting` with an expired lease. The
- * reconciler enqueues one `extract:<id>:<attempts>` job for each; `claimVersion` decides
+ * reconciler enqueues one `extract-<id>-<attempts>` job for each; `claimVersion` decides
  * whether the job actually runs, so over-reporting here is harmless.
  */
 export async function findReconcilable(

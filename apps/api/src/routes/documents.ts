@@ -123,7 +123,7 @@ export function documentRoutes(app: FastifyInstance, deps: Deps): void {
    * `POST /documents/:id/retry`: puts a `failed` current version back to `queued`.
    *
    * - `202` + `DocumentSummaryDto`: the version was reset (fresh attempt budget) and a job
-   *   `extract:<versionId>:0` is enqueued (fire-and-forget, after the update commits). As
+   *   `extract-<versionId>-0` is enqueued (fire-and-forget, after the update commits). As
    *   with upload, a lost hint is repaired by the reconciler.
    * - `400 bad_request`: `:id` is not a UUID.
    * - `404 not_found`: no such document.
