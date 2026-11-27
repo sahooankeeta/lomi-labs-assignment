@@ -299,7 +299,7 @@ describe('versions and carry-over', () => {
   it('v2 during v1 extraction: v1 goes stale and superseded, v2 starts with no links', async () => {
     const { documentId, versionId: v1 } = await seed('invoice', pdf('invoice-001.pdf'));
     // A short renewal period so the superseded run notices within milliseconds.
-    const slow = deps(new FakeExtractor({ delayMs: 300 }), { renewMs: 25 });
+    const slow = deps(new FakeExtractor({ delayMs: 1000 }), { renewMs: 25 });
     const v1Run = processVersion(slow, v1);
     // Poll the row rather than sleeping a fixed time: wait until v1 is really extracting.
     const start = Date.now();
