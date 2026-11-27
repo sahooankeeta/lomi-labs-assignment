@@ -1,6 +1,7 @@
-import { computeProgress, deriveReviewState } from '@lomi/shared';
+import { computeProgress } from '@lomi/shared';
 import type { DocumentDetailDto, DocumentType, ExpectedFields, ValueDto } from '@lomi/shared';
 import type { Db } from './client.js';
+import { loadValuesWithLatestReview, reviewStateOf } from './value-rows.js';
 
 /**
  * Document lifecycle reads and writes used by the api and the seed script.
@@ -99,11 +100,7 @@ export async function getDocumentDetail(
         });
   if (!version) return null;
 
-  // Reviews are append-only; the newest row is the value's current review.
-  const rows = await db.extractedValue.findMany({
-    where: { versionId: version.id },
-    include: { reviews: { orderBy: { createdAt: 'desc' }, take: 1 } },
-  });
+  const rows = await loadValuesWithLatestReview(db, [version.id]);
 
   const defs = opts.fields[document.type];
   const values: ValueDto[] = [];
@@ -111,11 +108,7 @@ export async function getDocumentDetail(
     const row = rows.find((r) => r.field === def.field);
     if (!row) continue;
     const review = row.reviews[0] ?? null;
-    // Own review beats a carried one; see deriveReviewState.
-    const reviewState = deriveReviewState({
-      latestReviewAction: review?.action ?? null,
-      carriedReviewId: row.carriedReviewId,
-    });
+    const reviewState = reviewStateOf(row);
     values.push({
       id: row.id,
       field: row.field,

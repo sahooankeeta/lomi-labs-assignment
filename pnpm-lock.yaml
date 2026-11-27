@@ -307,6 +307,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@lomi/extraction':
+        specifier: workspace:*
+        version: link:../extraction
       '@lomi/logger':
         specifier: workspace:*
         version: link:../logger
