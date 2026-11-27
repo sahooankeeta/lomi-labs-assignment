@@ -5,3 +5,4 @@
 export * from './text.js';
 export * from './values.js';
 export * from './pages.js';
+export * from './chunker.js';
