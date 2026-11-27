@@ -65,7 +65,18 @@ services:
     env_file:
       - path: .env
         required: false
-    environment: *node-env
+    # API keys (ANTHROPIC_API_KEY, GEMINI_API_KEY) come only from .env above. Empty means: use the code's default.
+    environment:
+      <<: *node-env
+      EXTRACTOR: ${EXTRACTOR:-}
+      FAKE_EXTRACTOR_DELAY_MS: ${FAKE_EXTRACTOR_DELAY_MS:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      GEMINI_FALLBACK_MODELS: ${GEMINI_FALLBACK_MODELS:-}
+      CHUNK_CONCURRENCY: ${CHUNK_CONCURRENCY:-}
+      LLM_MAX_INFLIGHT: ${LLM_MAX_INFLIGHT:-}
+    # Longer than the worker's SIGTERM handoff, so restart hands versions back instead of SIGKILL.
+    stop_grace_period: 15s
     volumes: [uploads:/data/uploads]
     restart: unless-stopped
     depends_on:

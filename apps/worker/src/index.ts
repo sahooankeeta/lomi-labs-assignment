@@ -38,6 +38,7 @@ const deps: PipelineDeps = {
   fields: loadExpectedFields(),
   log,
   signal: shutdown.signal,
+  chunkConcurrency: Number.parseInt(process.env.CHUNK_CONCURRENCY ?? '', 10) || 3,
 };
 
 const worker = new Worker<ExtractionJob>(
