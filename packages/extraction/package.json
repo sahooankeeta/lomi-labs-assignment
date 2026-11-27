@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "@lomi/config": "workspace:*"
+  },
+  "dependencies": {
+    "@lomi/shared": "workspace:*"
   }
 }

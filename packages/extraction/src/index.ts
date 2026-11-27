@@ -3,3 +3,4 @@
  * unit-tested without Postgres, Redis or an LLM.
  */
 export * from './text.js';
+export * from './values.js';

@@ -325,6 +325,10 @@ importers:
         version: 7.10.1(@types/node@26.6.10)(@types/react-dom@19.3.0(@types/react@19.3.2))(@types/react@19.3.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@6.0.3)
 
   packages/extraction:
+    dependencies:
+      '@lomi/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@lomi/config':
         specifier: workspace:*
