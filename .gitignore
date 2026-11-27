@@ -6,3 +6,4 @@ dist/
 coverage/
 uploads/
 packages/db/src/generated/
+.playwright-mcp/
