@@ -43,6 +43,19 @@ export const INVOICE_V1_OUTPUT = {
   ],
 };
 
+/** Invoice v2 (fixtures invoice-001.v2.pdf): only due_date and total_amount differ from v1. */
+export const INVOICE_V2_OUTPUT = {
+  fields: INVOICE_V1_OUTPUT.fields.map((f) => {
+    if (f.field === 'due_date') {
+      return { ...f, value: '2025-11-13', evidence: 'Due Date: 2025-11-13' };
+    }
+    if (f.field === 'total_amount') {
+      return { ...f, value: '$6,126.45', evidence: 'Total Due: $6,126.45' };
+    }
+    return f;
+  }),
+};
+
 export const LEASE_FIELDS: FieldDef[] = [
   { field: 'tenant_name', type: 'string' },
   { field: 'monthly_rent', type: 'money' },

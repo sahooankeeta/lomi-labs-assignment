@@ -2,11 +2,13 @@
 import { readFile } from 'node:fs/promises';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { describe, expect, it } from 'vitest';
+import { isUnchanged } from './carry.js';
 import { joinPages } from './pages.js';
 import {
   INVOICE_FIELDS,
   INVOICE_V1,
   INVOICE_V1_OUTPUT,
+  INVOICE_V2_OUTPUT,
   LEASE_FIELDS,
   LEASE_OUTPUT,
 } from './testdata.js';
@@ -43,5 +45,20 @@ describe('fixture PDFs', () => {
     const { text } = await parse('lease-excerpt-001.pdf');
     const out = validateChunkOutput(LEASE_OUTPUT, LEASE_FIELDS, { text, start: 0 });
     expect(out.filter((c) => c.kind === 'value')).toHaveLength(5);
+  });
+
+  it('invoice v1 vs v2: exactly due_date and total_amount changed', async () => {
+    const v1 = await parse('invoice-001.pdf');
+    const v2 = await parse('invoice-001.v2.pdf');
+    const out1 = validateChunkOutput(INVOICE_V1_OUTPUT, INVOICE_FIELDS, { text: v1.text, start: 0 });
+    const out2 = validateChunkOutput(INVOICE_V2_OUTPUT, INVOICE_FIELDS, { text: v2.text, start: 0 });
+    expect(out1.filter((c) => c.kind === 'value')).toHaveLength(5);
+    expect(out2.filter((c) => c.kind === 'value')).toHaveLength(5);
+    const changed = INVOICE_FIELDS.filter(({ field, type }) => {
+      const a = INVOICE_V1_OUTPUT.fields.find((f) => f.field === field)!;
+      const b = INVOICE_V2_OUTPUT.fields.find((f) => f.field === field)!;
+      return !isUnchanged(a, b, v2.text, type);
+    }).map((f) => f.field);
+    expect(changed).toEqual(['due_date', 'total_amount']);
   });
 });

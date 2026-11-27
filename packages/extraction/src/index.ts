@@ -9,3 +9,4 @@ export * from './chunker.js';
 export * from './prompt.js';
 export * from './validate.js';
 export * from './merge.js';
+export * from './carry.js';
