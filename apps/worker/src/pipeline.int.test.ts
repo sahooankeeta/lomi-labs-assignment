@@ -138,7 +138,7 @@ describe('processVersion', () => {
   it('fails with the missing-key message, then succeeds after retry', async () => {
     const { documentId, versionId } = await seed('invoice', pdf('invoice-001.pdf'));
     expect(await processVersion(deps(new MissingKeyExtractor()), versionId)).toBe('failed');
-    expect((await version(versionId)).error).toBe('ANTHROPIC_API_KEY is not set');
+    expect((await version(versionId)).error).toBe('GEMINI_API_KEY is not set');
 
     expect(await retryCurrentVersion(db, documentId)).toMatchObject({ kind: 'retried' });
     expect(await processVersion(deps(new FakeExtractor()), versionId)).toBe('finished');

@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ClaudeExtractor,
-  FakeExtractor,
-  GeminiExtractor,
-  MissingKeyExtractor,
-  createExtractor,
-} from './index.js';
+import { FakeExtractor, GeminiExtractor, MissingKeyExtractor, createExtractor } from './index.js';
+
+const req = {
+  type: 'invoice' as const,
+  fields: [],
+  chunkText: '',
+  prompt: { system: '', user: '' },
+};
 
 describe('createExtractor', () => {
   it('EXTRACTOR=fake gives the fake extractor (even with a key)', () => {
-    expect(createExtractor({ EXTRACTOR: 'fake', ANTHROPIC_API_KEY: 'x' })).toBeInstanceOf(
+    expect(createExtractor({ EXTRACTOR: 'fake', GEMINI_API_KEY: 'x' })).toBeInstanceOf(
       FakeExtractor,
     );
   });
@@ -17,39 +18,25 @@ describe('createExtractor', () => {
   it('no key gives MissingKeyExtractor whose calls reject with a clear message', async () => {
     const ex = createExtractor({});
     expect(ex).toBeInstanceOf(MissingKeyExtractor);
-    const req = {
-      type: 'invoice' as const,
-      fields: [],
-      chunkText: '',
-      prompt: { system: '', user: '' },
-    };
-    await expect(ex.extract(req)).rejects.toThrow(/^ANTHROPIC_API_KEY is not set$/);
-    await expect(ex.countTokens('x')).rejects.toThrow(/^ANTHROPIC_API_KEY is not set$/);
+    await expect(ex.extract(req)).rejects.toThrow(/^GEMINI_API_KEY is not set$/);
+    await expect(ex.countTokens('x')).rejects.toThrow(/^GEMINI_API_KEY is not set$/);
   });
 
   it('a blank key counts as missing', () => {
-    expect(createExtractor({ ANTHROPIC_API_KEY: '  ' })).toBeInstanceOf(MissingKeyExtractor);
+    expect(createExtractor({ GEMINI_API_KEY: '  ' })).toBeInstanceOf(MissingKeyExtractor);
+    expect(createExtractor({ EXTRACTOR: '', GEMINI_API_KEY: '' })).toBeInstanceOf(
+      MissingKeyExtractor,
+    );
   });
 
-  it('a key gives ClaudeExtractor with the default model', () => {
-    const ex = createExtractor({ ANTHROPIC_API_KEY: 'x' });
-    expect(ex).toBeInstanceOf(ClaudeExtractor);
-    expect(ex.model).toBe('claude-sonnet-5-5');
+  it('unset EXTRACTOR with a key gives GeminiExtractor with the default model', () => {
+    const ex = createExtractor({ GEMINI_API_KEY: 'x' });
+    expect(ex).toBeInstanceOf(GeminiExtractor);
+    expect(ex.model).toBe('gemini-3.6-flash');
   });
-
-  it('honours ANTHROPIC_MODEL', () => {
-    expect(createExtractor({ ANTHROPIC_API_KEY: 'x', ANTHROPIC_MODEL: 'm-1' }).model).toBe('m-1');
-  });
-
-  const req = {
-    type: 'invoice' as const,
-    fields: [],
-    chunkText: '',
-    prompt: { system: '', user: '' },
-  };
 
   it('EXTRACTOR=gemini without a key rejects with GEMINI_API_KEY is not set', async () => {
-    const ex = createExtractor({ EXTRACTOR: 'gemini', ANTHROPIC_API_KEY: 'x' });
+    const ex = createExtractor({ EXTRACTOR: 'gemini' });
     expect(ex).toBeInstanceOf(MissingKeyExtractor);
     await expect(ex.extract(req)).rejects.toThrow(/^GEMINI_API_KEY is not set$/);
   });
@@ -72,15 +59,16 @@ describe('createExtractor', () => {
   });
 
   it('an unsupported EXTRACTOR value gives a clear MissingKeyExtractor', async () => {
-    const ex = createExtractor({ EXTRACTOR: 'bogus', ANTHROPIC_API_KEY: 'x' });
+    const ex = createExtractor({ EXTRACTOR: 'bogus', GEMINI_API_KEY: 'x' });
     await expect(ex.extract(req)).rejects.toThrow(
-      'EXTRACTOR=bogus is not supported (use claude, gemini or fake)',
+      'EXTRACTOR=bogus is not supported (use gemini or fake)',
     );
   });
 
-  it('EXTRACTOR=claude behaves like unset', () => {
-    expect(createExtractor({ EXTRACTOR: 'claude', ANTHROPIC_API_KEY: 'x' })).toBeInstanceOf(
-      ClaudeExtractor,
+  it('EXTRACTOR=claude is not supported', async () => {
+    const ex = createExtractor({ EXTRACTOR: 'claude', GEMINI_API_KEY: 'x' });
+    await expect(ex.extract(req)).rejects.toThrow(
+      'EXTRACTOR=claude is not supported (use gemini or fake)',
     );
   });
 });

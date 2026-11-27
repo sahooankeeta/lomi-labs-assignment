@@ -1,11 +1,11 @@
 import type { ExtractRequest, Extractor } from './types.js';
 
-const DEFAULT_MESSAGE = 'ANTHROPIC_API_KEY is not set';
+const DEFAULT_MESSAGE = 'GEMINI_API_KEY is not set';
 
 /**
  * Stand-in when no API key is configured. The worker still boots (so uploads, review and
  * the UI keep working), and each version fails with a clear message instead of the process
- * crashing at startup. Every call rejects with `message` (default `ANTHROPIC_API_KEY is not set`;
+ * crashing at startup. Every call rejects with `message` (default `GEMINI_API_KEY is not set`;
  * the factory also uses it for an unsupported `EXTRACTOR` value).
  */
 export class MissingKeyExtractor implements Extractor {

@@ -9,7 +9,7 @@ export interface ExtractRequest {
 }
 
 /**
- * The worker's only boundary to an LLM. Implementations: Claude, a deterministic fake,
+ * The worker's only boundary to an LLM. Implementations: Gemini, a deterministic fake,
  * and a missing-key stub. Callers must not assume `output` is valid: pass it to
  * `validateChunkOutput`, which checks shape and evidence.
  */
