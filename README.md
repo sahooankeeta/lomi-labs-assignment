@@ -2,7 +2,9 @@
 
 > **Status: Phase 1 complete (ingest and extraction).** Upload a PDF, get values with verbatim evidence, page and offsets, or gaps with reasons; survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Not yet built: version upload and carry-over, review and progress routes, the UI beyond the skeleton. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
-PDFs go in, an LLM (Claude by default; Gemini or a fake extractor optionally) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
+PDFs go in, an LLM (Google Gemini; a fake extractor for tests) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
+
+> The spec named Claude. The project owner removed it to avoid a paid API, so Gemini (free tier) is the only real provider. Adding another is one `Extractor` implementation plus a factory branch.
 
 ## Run it
 
@@ -13,8 +15,7 @@ docker compose up --build
 
 Pick the extractor in `.env` (compose passes these to the worker):
 
-- **Gemini (free tier):** `EXTRACTOR=gemini` and `GEMINI_API_KEY=...` (key from https://aistudio.google.com/apikey).
-- **Claude (the default):** set `ANTHROPIC_API_KEY`; `EXTRACTOR` can stay unset. Without a key every version fails visibly with `ANTHROPIC_API_KEY is not set` and can be retried.
+- **Gemini (the default, free tier):** set `GEMINI_API_KEY=...` (key from https://aistudio.google.com/apikey); `EXTRACTOR` can stay unset. Without a key every version fails visibly with `GEMINI_API_KEY is not set` and can be retried.
 - **Fake (offline, no key):** `EXTRACTOR=fake`, optional `FAKE_EXTRACTOR_DELAY_MS=15000`. Deterministic values from the fixtures.
 
 After changing `.env`, run `docker compose up -d worker` to recreate the worker.
@@ -50,7 +51,6 @@ pnpm -r run build && pnpm -r run typecheck && pnpm -r run lint && pnpm -r run te
 pnpm --filter @lomi/db test:integration   # needs Postgres; uses TEST_DATABASE_URL
 pnpm --filter @lomi/api test:integration  # needs Postgres; run after (not alongside) the db suite, they share lomi_test
 pnpm --filter @lomi/worker test:integration # needs Postgres, no Redis, fake extractor only; run alone (shares lomi_test)
-pnpm --filter @lomi/worker smoke:claude   # live Claude call on the invoice fixture; needs ANTHROPIC_API_KEY, costs a few cents
 pnpm --filter @lomi/worker smoke:gemini   # check a Gemini key: lists models, one extraction on the invoice; needs GEMINI_API_KEY (free tier)
 ```
 
@@ -60,20 +60,18 @@ Unit tests (`*.test.ts`) need nothing running. Integration tests (`*.int.test.ts
 
 ### Extractor settings (worker)
 
-| Variable                  | Default                    | Effect                                                                                                                                        |
-| ------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`       | none                       | Without it the worker still starts, but every version fails with `ANTHROPIC_API_KEY is not set`.                                              |
-| `ANTHROPIC_MODEL`         | `claude-sonnet-5-5`        | Model used for extraction and token counting.                                                                                                 |
-| `LLM_MAX_INFLIGHT`        | `4`                        | Max concurrent LLM calls (Claude: token counts and extractions share the cap; Gemini: extractions).                                           |
-| `EXTRACTOR`               | `claude`                   | `claude`, `gemini` or `fake`. Any other value makes every version fail with a clear message.                                                  |
-| `GEMINI_API_KEY`          | none                       | Needed for `EXTRACTOR=gemini` (free tier: https://aistudio.google.com/apikey). Missing: every version fails with `GEMINI_API_KEY is not set`. |
-| `GEMINI_MODEL`            | `gemini-3.6-flash`         | Primary Gemini model.                                                                                                                         |
-| `GEMINI_FALLBACK_MODELS`  | `gemini-flash-lite-latest` | Comma-separated models tried in order when the primary is busy (429/503/timeout twice) or retired (404).                                      |
-| `EXTRACTOR=fake`          | unset                      | Deterministic offline extractor for tests/e2e; ignores the API keys.                                                                          |
-| `FAKE_EXTRACTOR_DELAY_MS` | `0`                        | Simulated latency per fake extraction.                                                                                                        |
-| `CHUNK_CONCURRENCY`       | `3`                        | Chunks of one document extracted at once.                                                                                                     |
+| Variable                  | Default                    | Effect                                                                                                                                                                        |
+| ------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LLM_MAX_INFLIGHT`        | `4`                        | Max concurrent LLM calls (Gemini extractions).                                                                                                                                |
+| `EXTRACTOR`               | `gemini`                   | `gemini` or `fake`. Any other value makes every version fail with a clear message.                                                                                            |
+| `GEMINI_API_KEY`          | none                       | Required unless `EXTRACTOR=fake` (free tier: https://aistudio.google.com/apikey). Missing: the worker still starts, but every version fails with `GEMINI_API_KEY is not set`. |
+| `GEMINI_MODEL`            | `gemini-3.6-flash`         | Primary Gemini model.                                                                                                                                                         |
+| `GEMINI_FALLBACK_MODELS`  | `gemini-flash-lite-latest` | Comma-separated models tried in order when the primary is busy (429/503/timeout twice) or retired (404).                                                                      |
+| `EXTRACTOR=fake`          | unset                      | Deterministic offline extractor for tests/e2e; ignores the API keys.                                                                                                          |
+| `FAKE_EXTRACTOR_DELAY_MS` | `0`                        | Simulated latency per fake extraction.                                                                                                                                        |
+| `CHUNK_CONCURRENCY`       | `3`                        | Chunks of one document extracted at once.                                                                                                                                     |
 
-`EXTRACTOR=gemini` runs on Google's free tier, which has rate limits and models that are sometimes overloaded: a busy model is retried once, then the next fallback model is used, and stored results record which model answered. Token counts are a local estimate (length / 4), so Gemini uses no quota for them. Answers go through the same evidence check as Claude's.
+The Gemini extractor runs on Google's free tier, which has rate limits and models that are sometimes overloaded: a busy model is retried once, then the next fallback model is used, and stored results record which model answered. Token counts are a local estimate (length / 4), so Gemini uses no quota for them. Answers go through the same evidence check as the fake's.
 
 ## API
 
@@ -104,17 +102,17 @@ writes nothing. The lease is renewed on its own timer, so a slow LLM call cannot
 | Worker killed / restart | Lease expires (30 s); the reconciler (every 10 s) re-enqueues; the next run reuses stored text and chunk results.                     |
 | SIGTERM                 | In-flight runs stop, the version goes back to `queued` without spending an attempt, and the next reconciler pass (≤ 10 s) resumes it. |
 | Redis `FLUSHALL`        | Jobs vanish; the reconciler re-adds every `queued` or expired version from Postgres within 10 s.                                      |
-| Missing key             | Version `failed` with `ANTHROPIC_API_KEY is not set` (or the Gemini equivalent); `POST /documents/:id/retry` once it is set.          |
+| Missing key             | Version `failed` with `GEMINI_API_KEY is not set`; `POST /documents/:id/retry` once it is set.                                        |
 | Scanned PDF / too long  | Version `failed` with a clear message (`No text layer found...`, `Document too long (N chunks; limit 50)`).                           |
 
-Env: `EXTRACTOR` (`claude` default, `gemini`, `fake`), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `GEMINI_API_KEY` / `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `LLM_MAX_INFLIGHT`, `CHUNK_CONCURRENCY` (default 3), `UPLOAD_DIR`, `FIXTURES_DIR`, `REDIS_URL`, `DATABASE_URL`.
+Env: `EXTRACTOR` (`gemini` default, `fake`), `GEMINI_API_KEY` / `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `LLM_MAX_INFLIGHT`, `CHUNK_CONCURRENCY` (default 3), `UPLOAD_DIR`, `FIXTURES_DIR`, `REDIS_URL`, `DATABASE_URL`.
 
 ## Layout
 
 ```
 apps/
   api/         Fastify HTTP API. Validates, writes to Postgres, enqueues jobs. Never calls the LLM.
-  worker/      BullMQ worker. Parses the PDF, calls the configured LLM (Claude, Gemini or fake), validates evidence, writes values to Postgres.
+  worker/      BullMQ worker. Parses the PDF, calls the configured LLM (Gemini or fake), validates evidence, writes values to Postgres.
   web/         Vite + React review UI (TanStack Query, React Router).
 packages/
   db/          Prisma schema, SQL migrations (incl. hand-written CHECKs), seed script,
@@ -146,15 +144,15 @@ fixtures/      Sample PDFs and manifests from the assignment.
 
 ## Stack
 
-| Concern      | Choice                         | Why                                                                                                                                                                                                                                                  |
-| ------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTTP         | Fastify 5                      | Built-in schema validation, `onClose` hooks for clean shutdown, pino logging, streaming multipart uploads                                                                                                                                            |
-| DB           | Postgres 16 + Prisma 7         | Prisma 7 (`prisma-client` generator + `pg` driver adapter). Guarded `updateMany` + count checks, interactive transactions and `createMany({ skipDuplicates })` cover the idempotency rules; one raw `SELECT … FOR UPDATE` where row locks are needed |
-| Queue        | BullMQ on Redis 7              | Coordinates work only. Postgres is the source of truth                                                                                                                                                                                               |
-| LLM          | Claude (default), Gemini, fake | JSON-schema structured outputs; the same evidence check applies to all three ([0005](docs/decisions/0005-structured-outputs-and-model.md))                                                                                                           |
-| PDF text     | unpdf                          | Maintained, pure JS                                                                                                                                                                                                                                  |
-| UI           | Vite + React 19                | Plain SPA, no SSR needed                                                                                                                                                                                                                             |
-| Tests / lint | Vitest, ESLint, Prettier       |                                                                                                                                                                                                                                                      |
+| Concern      | Choice                   | Why                                                                                                                                                                                                                                                  |
+| ------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP         | Fastify 5                | Built-in schema validation, `onClose` hooks for clean shutdown, pino logging, streaming multipart uploads                                                                                                                                            |
+| DB           | Postgres 16 + Prisma 7   | Prisma 7 (`prisma-client` generator + `pg` driver adapter). Guarded `updateMany` + count checks, interactive transactions and `createMany({ skipDuplicates })` cover the idempotency rules; one raw `SELECT … FOR UPDATE` where row locks are needed |
+| Queue        | BullMQ on Redis 7        | Coordinates work only. Postgres is the source of truth                                                                                                                                                                                               |
+| LLM          | Gemini (default), fake   | JSON-schema structured outputs; the same evidence check applies to both ([0005](docs/decisions/0005-structured-outputs-and-model.md))                                                                                                                |
+| PDF text     | unpdf                    | Maintained, pure JS                                                                                                                                                                                                                                  |
+| UI           | Vite + React 19          | Plain SPA, no SSR needed                                                                                                                                                                                                                             |
+| Tests / lint | Vitest, ESLint, Prettier |                                                                                                                                                                                                                                                      |
 
 ## Verify
 
@@ -167,9 +165,7 @@ The script needs bash (Git Bash on Windows), `curl`, `node` and `docker compose`
 
 ### Live extraction check
 
-The Claude path is covered by unit tests with a stubbed client, but it has **not yet run against the live API**; run `pnpm --filter @lomi/worker smoke:claude` with a key to check it. The run below used Gemini.
-
-Run with `EXTRACTOR=gemini` (free tier) on 2026-11-27: the three fixtures were uploaded as new documents and extracted by `gemini-3.6-flash` (no fallback needed, one attempt each, 33 to 42 s per document). Result: **16 of 16 fields correct**, including the expected gap.
+Run with Gemini (free tier) on 2026-11-27: the three fixtures were uploaded as new documents and extracted by `gemini-3.6-flash` (no fallback needed, one attempt each, 33 to 42 s per document). Result: **16 of 16 fields correct**, including the expected gap.
 
 | Fixture       | Time   | Values                                                                                                                                                                                                                  |
 | ------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

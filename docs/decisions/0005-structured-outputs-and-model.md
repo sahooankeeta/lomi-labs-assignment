@@ -3,25 +3,25 @@
 ## Context
 
 The extractor must return one value, evidence quote or gap reason per field, in a shape the
-validator can trust. Claude is the product default, but the project also needs a free way to run
-end to end, and the tests must not call any API.
+validator can trust. The project must run end to end on a free tier, and the tests must not
+call any API.
 
 ## Decision
 
-- Responses are constrained with a JSON schema (`output_config.format` for Claude; the equivalent
-  response schema for Gemini). Structured outputs are preferred over forcing a tool call.
-- **Claude is the default** (`EXTRACTOR=claude`, `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`), as
-  the spec says. A missing key makes the version `failed`, visibly and retryably.
-- **Gemini is the free alternative** (`EXTRACTOR=gemini`, free tier). A busy model (429, 503, timeout) is
+- Responses are constrained with a JSON schema (Gemini's response schema), not a forced tool call.
+- **Gemini is the default** (`EXTRACTOR` unset or `gemini`, free tier, `GEMINI_API_KEY` required). A
+  missing key makes the version `failed`, visibly and retryably. A busy model (429, 503, timeout) is
   retried once, then the next in `GEMINI_FALLBACK_MODELS` is used; results record the model.
 - **Fake extractor** (`EXTRACTOR=fake`) returns deterministic values from the fixtures offline, with
   an optional delay. It drives the integration tests and `scripts/verify-phase1.sh`.
-- Evidence validation (0003) runs identically on all three. Token counting for Gemini and the fake is
+- Evidence validation (0003) runs identically on both. Token counting for Gemini and the fake is
   local (length / 4), so Gemini uses no quota to count.
+- Any other `EXTRACTOR` value fails each version with a clear "not supported" message.
 
 ## Alternatives
 
-- Claude only. Rejected: the free tier lets the project run without credits.
+- Claude, as the spec named. Removed by the project owner's choice (cost): it needs a paid API.
+  Another provider is one `Extractor` implementation plus a factory branch.
 - Forced tool use for structure. Rejected: structured outputs constrain the schema directly.
 
 ## Consequences

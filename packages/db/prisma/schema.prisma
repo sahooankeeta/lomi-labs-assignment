@@ -73,7 +73,7 @@ model DocumentVersion {
   error          String?
   parsedText     String?       @map("parsed_text")
   pageOffsets    Int[]         @map("page_offsets")
-  /// Claude countTokens for the whole parsed text
+  /// token count from the extractor's counter for the whole parsed text
   totalTokens    Int?          @map("total_tokens")
   charsPerToken  Float?        @map("chars_per_token")
   /// The only run allowed to finish this version
@@ -116,7 +116,7 @@ model VersionChunk {
   chunkIndex Int    @map("chunk_index")
   start      Int
   end        Int
-  /// Claude countTokens for this exact slice
+  /// token count from the extractor's counter for this exact slice
   tokens     Int
   firstPage  Int    @map("first_page")
   lastPage   Int    @map("last_page")

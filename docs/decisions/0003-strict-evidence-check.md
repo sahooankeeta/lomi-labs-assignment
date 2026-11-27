@@ -14,7 +14,7 @@ percent by digits (`5230.29` ~ `$5,230.29`), dates by parsed date (`2026-03-15` 
 strings by case-insensitive substring. Nothing fuzzier. A failure becomes a gap with a reason
 ("evidence not found in document text" or "value not found in its quote"). The quote is searched
 inside its own chunk and mapped to version offsets, so repeated phrases resolve correctly.
-The check is applied identically to every extractor (Claude, Gemini, fake).
+The check is applied identically to every extractor (Gemini, fake).
 
 ## Alternatives
 

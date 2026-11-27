@@ -17,7 +17,7 @@ nor duplicate values. The three fixtures are one page each.
   (`CHUNK_CONCURRENCY`) under a process-wide `LLM_MAX_INFLIGHT` limit of 4.
 - Per-field merge: none found is a gap, one distinct value is kept, conflicting values become a gap
   that lists the candidates.
-- Claude counts with `messages.countTokens`; Gemini and the fake use a local length / 4 estimate.
+- Gemini and the fake both count tokens locally (length / 4).
 
 ## Alternatives
 
