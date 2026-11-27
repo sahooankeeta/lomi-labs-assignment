@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createLogger } from '@lomi/logger';
 import { FixtureManifest } from '@lomi/shared';
+import { resolveRepoPath } from '@lomi/shared/node';
 import { createDb } from './client.js';
 import { createDocumentWithV1 } from './documents.js';
 
@@ -13,9 +13,9 @@ import { createDocumentWithV1 } from './documents.js';
  * rule the API uses for double uploads). Versions start `queued`; the worker finds
  * them in Postgres, so seeding never depends on Redis.
  */
-const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
-const fixturesDir = path.resolve(repoRoot, process.env.FIXTURES_DIR ?? 'fixtures');
-const uploadDir = path.resolve(repoRoot, process.env.UPLOAD_DIR ?? 'uploads');
+// Same repo-root rule as the api and worker, so all three share one uploads folder.
+const fixturesDir = resolveRepoPath(process.env.FIXTURES_DIR ?? 'fixtures');
+const uploadDir = resolveRepoPath(process.env.UPLOAD_DIR ?? 'uploads');
 
 const manifest = FixtureManifest.parse(
   JSON.parse(await readFile(path.join(fixturesDir, 'documents.json'), 'utf8')),

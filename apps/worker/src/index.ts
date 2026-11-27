@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { createDb } from '@lomi/db';
 import { LocalFileStore } from '@lomi/files';
 import { createLogger, describeUrl, errInfo, logConnections } from '@lomi/logger';
-import { loadExpectedFields } from '@lomi/shared/node';
+import { loadExpectedFields, resolveRepoPath } from '@lomi/shared/node';
 import {
   createExtractionQueue,
   enqueueExtraction,
@@ -33,7 +33,8 @@ log.info(`extractor: ${extractor.constructor.name} (model ${extractor.model})`);
 const shutdown = new AbortController();
 const deps: PipelineDeps = {
   db: prisma,
-  files: new LocalFileStore(process.env.UPLOAD_DIR ?? './uploads'),
+  // Repo-root relative, like the api and seed: `pnpm --filter @lomi/worker dev` runs in apps/worker.
+  files: new LocalFileStore(resolveRepoPath(process.env.UPLOAD_DIR ?? './uploads')),
   extractor,
   fields: loadExpectedFields(),
   log,

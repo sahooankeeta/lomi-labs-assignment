@@ -44,6 +44,8 @@ pnpm db:seed      # builds deps, runs migrations, then seeds
 pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
 ```
 
+Relative `UPLOAD_DIR` and `FIXTURES_DIR` (the `./uploads` and `./fixtures` in `.env.example`) resolve against the repo root, not each app's folder, so the api, worker and seed share one `uploads/`. Absolute paths (compose uses `/data/uploads`) are used as given.
+
 ### Checks
 
 ```sh
@@ -96,7 +98,7 @@ curl -X POST localhost:3000/documents/<uuid>/retry
 
 ## Review UI
 
-Run `pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, then open http://localhost:5173. This is where the flow below was verified in a browser.
+Run `pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, then open http://localhost:5173. This is where the flow below was verified in a browser; it works with the stock relative paths from `.env.example`.
 
 For the compose stack (http://localhost:8080), rebuild the images one service at a time first, so the new UI is served: `docker compose build api`, then `worker`, `web`, `migrate`, then `docker compose up -d`. The :8080 path has not been verified.
 
