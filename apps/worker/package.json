@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "smoke:claude": "tsx --env-file-if-exists=../../.env scripts/smoke-claude.ts",
+    "smoke:gemini": "tsx --env-file-if-exists=../../.env scripts/smoke-gemini.ts",
     "test": "vitest run --exclude \"**/*.int.test.ts\" --passWithNoTests"
   },
   "devDependencies": {

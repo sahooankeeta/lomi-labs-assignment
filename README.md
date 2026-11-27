@@ -34,6 +34,7 @@ pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
 pnpm -r run build && pnpm -r run typecheck && pnpm -r run lint && pnpm -r run test
 pnpm --filter @lomi/db test:integration   # needs Postgres; uses TEST_DATABASE_URL
 pnpm --filter @lomi/worker smoke:claude   # live Claude call on the invoice fixture; needs ANTHROPIC_API_KEY, costs a few cents
+pnpm --filter @lomi/worker smoke:gemini   # check a Gemini key: lists models, one extraction on the invoice; needs GEMINI_API_KEY (free tier)
 ```
 
 (`pnpm turbo …` does the same where Windows Application Control doesn't block the turbo binary.)
