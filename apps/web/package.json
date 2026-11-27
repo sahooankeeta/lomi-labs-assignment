@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@lomi/shared": "workspace:*",
+    "@mantine/core": "9.8.2",
+    "@mantine/hooks": "9.8.2",
     "@tanstack/react-query": "^5.108.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
