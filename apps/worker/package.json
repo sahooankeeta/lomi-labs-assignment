@@ -11,15 +11,18 @@
     "lint": "eslint .",
     "smoke:claude": "tsx --env-file-if-exists=../../.env scripts/smoke-claude.ts",
     "smoke:gemini": "tsx --env-file-if-exists=../../.env scripts/smoke-gemini.ts",
-    "test": "vitest run --exclude \"**/*.int.test.ts\" --passWithNoTests"
+    "test": "vitest run --exclude \"**/*.int.test.ts\" --passWithNoTests",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "devDependencies": {
-    "@lomi/config": "workspace:*"
+    "@lomi/config": "workspace:*",
+    "pdf-lib": "^1.17.1"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
     "@lomi/db": "workspace:*",
     "@lomi/extraction": "workspace:*",
+    "@lomi/files": "workspace:*",
     "@lomi/logger": "workspace:*",
     "@lomi/queue": "workspace:*",
     "@lomi/shared": "workspace:*",
