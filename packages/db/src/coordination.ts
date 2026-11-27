@@ -1,5 +1,6 @@
-import type { DocumentType } from '@lomi/shared';
+import type { Candidate, DocumentType, FinalValue } from '@lomi/shared';
 import type { Db } from './client.js';
+import type { ChunkResult, VersionChunk } from './generated/client.js';
 
 /**
  * Worker coordination: how a worker claims a version, keeps it, and ends its run
@@ -218,4 +219,153 @@ export async function findReconcilable(
     },
     select: { id: true, attempts: true },
   });
+}
+
+export interface ChunkPlan {
+  chunks: {
+    index: number;
+    start: number;
+    end: number;
+    tokens: number;
+    firstPage: number;
+    lastPage: number;
+  }[];
+  totalTokens: number;
+  charsPerToken: number;
+}
+
+/**
+ * Stores the chunk plan, written once per version: existing chunk rows are kept
+ * (`skipDuplicates`) and the token totals are set only while null. A resumed or
+ * duplicate run therefore always sees the first run's plan, so cached chunk results
+ * still line up with their chunk indexes.
+ */
+export async function saveChunkPlan(db: Db, versionId: string, plan: ChunkPlan): Promise<void> {
+  await db.$transaction([
+    db.versionChunk.createMany({
+      data: plan.chunks.map((c) => ({
+        versionId,
+        chunkIndex: c.index,
+        start: c.start,
+        end: c.end,
+        tokens: c.tokens,
+        firstPage: c.firstPage,
+        lastPage: c.lastPage,
+      })),
+      skipDuplicates: true,
+    }),
+    db.documentVersion.updateMany({
+      where: { id: versionId, totalTokens: null },
+      data: { totalTokens: plan.totalTokens, charsPerToken: plan.charsPerToken },
+    }),
+  ]);
+}
+
+/**
+ * The saved plan (ordered by index) and the stored results for `promptVersion`, keyed
+ * by chunk index. A resumed run calls only the chunks missing from `results`; results
+ * from another prompt version are ignored.
+ */
+export async function getChunkState(
+  db: Db,
+  versionId: string,
+  promptVersion: string,
+): Promise<{ chunks: VersionChunk[]; results: Map<number, ChunkResult> }> {
+  const [chunks, rows] = await Promise.all([
+    db.versionChunk.findMany({ where: { versionId }, orderBy: { chunkIndex: 'asc' } }),
+    db.chunkResult.findMany({ where: { versionId, promptVersion } }),
+  ]);
+  return { chunks, results: new Map(rows.map((r) => [r.chunkIndex, r])) };
+}
+
+/**
+ * Stores one chunk's LLM answer. Results are keyed by (version, chunk, promptVersion),
+ * not by run, so a later run reuses them; if the key exists the first answer wins
+ * (`skipDuplicates`) and the duplicate is dropped without error. Candidates are the
+ * validated output; `rawResponse` is kept for debugging.
+ */
+export async function saveChunkResult(
+  db: Db,
+  row: {
+    versionId: string;
+    chunkIndex: number;
+    promptVersion: string;
+    runId: string;
+    prompt: string;
+    rawResponse: unknown;
+    candidates: Candidate[];
+  },
+): Promise<void> {
+  await db.chunkResult.createMany({
+    data: [
+      {
+        versionId: row.versionId,
+        chunkIndex: row.chunkIndex,
+        promptVersion: row.promptVersion,
+        runId: row.runId,
+        prompt: row.prompt,
+        rawResponse: row.rawResponse as object,
+        candidates: row.candidates as object[],
+      },
+    ],
+    skipDuplicates: true,
+  });
+}
+
+/**
+ * Writes the final values and completes the run, exactly once.
+ *
+ * In one transaction: a guarded UPDATE (id, `activeRunId = runId`, status `extracting`)
+ * moves the version to `extracted` and clears the lease. Only if that matched a row are
+ * the values inserted (unique per version+field, `skipDuplicates`) and the run marked
+ * `succeeded`. Previous-version carry-over is Phase 3, so `previousValueId` and
+ * `carriedReviewId` stay null.
+ *
+ * - `'finished'`: the caller may enqueue follow-up work.
+ * - `'stale'`: another run owns the version, or it was already finished/failed. Nothing
+ *   was written; the run is marked `abandoned` (if still running) and the caller stops.
+ */
+export async function finishVersion(
+  db: Db,
+  versionId: string,
+  runId: string,
+  values: FinalValue[],
+): Promise<'finished' | 'stale'> {
+  const finished = await db.$transaction(async (tx) => {
+    const { count } = await tx.documentVersion.updateMany({
+      where: { id: versionId, activeRunId: runId, status: 'extracting' },
+      data: { status: 'extracted', leaseExpiresAt: null },
+    });
+    // Nothing was written yet, so leaving the transaction here is the rollback.
+    if (count === 0) return false;
+
+    await tx.extractedValue.createMany({
+      data: values.map((v) => ({
+        versionId,
+        field: v.field,
+        value: v.value,
+        evidence: v.evidence,
+        gapReason: v.gapReason,
+        candidates: v.candidates ?? undefined,
+        evidencePage: v.evidencePage,
+        evidenceStart: v.evidenceStart,
+        evidenceEnd: v.evidenceEnd,
+      })),
+      skipDuplicates: true,
+    });
+    await tx.extractionRun.updateMany({
+      where: { id: runId },
+      data: { status: 'succeeded', finishedAt: new Date() },
+    });
+    return true;
+  });
+  if (finished) return 'finished';
+
+  // Outside the transaction on purpose: only a run still `running` is abandoned, so a
+  // duplicate finish can't overwrite an earlier `succeeded`.
+  await db.extractionRun.updateMany({
+    where: { id: runId, status: 'running' },
+    data: { status: 'abandoned', finishedAt: new Date() },
+  });
+  return 'stale';
 }

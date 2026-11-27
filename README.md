@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge) and the document read/write layer in `db`. Next: worker coordination, API routes, extractors, the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
+> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`. Next: API routes, extractors, the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
 
 PDFs go in, Claude extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -48,7 +48,8 @@ apps/
   web/         Vite + React review UI (TanStack Query, React Router).
 packages/
   db/          Prisma schema, SQL migrations (incl. hand-written CHECKs), seed script,
-               document create/read/retry (documents.ts), test DB harness (@lomi/db/testing).
+               document create/read/retry (documents.ts), worker claim/lease/finish (coordination.ts),
+               test DB harness (@lomi/db/testing).
   files/       Content-addressed file store: files saved as <sha256>.pdf, written atomically.
   shared/      Zod schemas and types shared by API, worker, and UI (statuses, field defs).
   extraction/  Pure logic, no I/O: quote matching (text.ts), per-type value comparison (values.ts),
