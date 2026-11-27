@@ -303,4 +303,31 @@ describe('startReconciler', () => {
       reconciler.stop();
     }
   });
+
+  describe('with a hung enqueue (Redis outage)', () => {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    it('runs one pass at a time, retries after the timeout, and stops on stop()', async () => {
+      await seed('invoice', pdf('invoice-001.pdf'));
+      await seed('lease', pdf('lease-excerpt-001.pdf'));
+      const enqueue = vi
+        .fn<(versionId: string, attempts: number) => Promise<void>>()
+        .mockImplementation(() => new Promise<void>(() => {}));
+      const reconciler = startReconciler({ db, enqueue, log, intervalMs: 40, timeoutMs: 400 });
+      try {
+        await sleep(250); // several ticks while the first pass is hung
+        expect(enqueue).toHaveBeenCalledTimes(2); // once per version, not once per tick
+        expect(await reconciler.runOnce()).toBe(0); // direct call is guarded too
+
+        await sleep(600); // first pass timed out at ~440 ms; a later tick runs again
+        expect(enqueue.mock.calls.length).toBeGreaterThanOrEqual(4);
+      } finally {
+        reconciler.stop();
+      }
+      const calls = enqueue.mock.calls.length;
+      await sleep(600);
+      expect(enqueue).toHaveBeenCalledTimes(calls);
+      expect(await reconciler.runOnce()).toBe(0);
+    });
+  });
 });
