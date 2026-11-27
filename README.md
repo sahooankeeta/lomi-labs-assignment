@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`, the worker's LLM boundary (concurrency limiter; Claude, fake and missing-key extractors). Next: API routes, the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
+> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`, the worker's LLM boundary (concurrency limiter; Claude, Gemini, fake and missing-key extractors). Next: API routes, the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
 
 PDFs go in, Claude extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -43,13 +43,19 @@ Unit tests (`*.test.ts`) need nothing running. Integration tests (`*.int.test.ts
 
 ### Extractor settings (worker)
 
-| Variable                  | Default             | Effect                                                                                           |
-| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------ |
-| `ANTHROPIC_API_KEY`       | none                | Without it the worker still starts, but every version fails with `ANTHROPIC_API_KEY is not set`. |
-| `ANTHROPIC_MODEL`         | `claude-sonnet-5-5` | Model used for extraction and token counting.                                                    |
-| `LLM_MAX_INFLIGHT`        | `4`                 | Max concurrent Claude calls (token counts and extractions share the cap).                        |
-| `EXTRACTOR=fake`          | unset               | Deterministic offline extractor for tests/e2e; ignores the API key.                              |
-| `FAKE_EXTRACTOR_DELAY_MS` | `0`                 | Simulated latency per fake extraction.                                                           |
+| Variable                  | Default                    | Effect                                                                                                                                        |
+| ------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`       | none                       | Without it the worker still starts, but every version fails with `ANTHROPIC_API_KEY is not set`.                                              |
+| `ANTHROPIC_MODEL`         | `claude-sonnet-5-5`        | Model used for extraction and token counting.                                                                                                 |
+| `LLM_MAX_INFLIGHT`        | `4`                        | Max concurrent LLM calls (Claude: token counts and extractions share the cap; Gemini: extractions).                                           |
+| `EXTRACTOR`               | `claude`                   | `claude`, `gemini` or `fake`. Any other value makes every version fail with a clear message.                                                  |
+| `GEMINI_API_KEY`          | none                       | Needed for `EXTRACTOR=gemini` (free tier: https://aistudio.google.com/apikey). Missing: every version fails with `GEMINI_API_KEY is not set`. |
+| `GEMINI_MODEL`            | `gemini-3.6-flash`         | Primary Gemini model.                                                                                                                         |
+| `GEMINI_FALLBACK_MODELS`  | `gemini-flash-lite-latest` | Comma-separated models tried in order when the primary is busy (429/503/timeout twice) or retired (404).                                      |
+| `EXTRACTOR=fake`          | unset                      | Deterministic offline extractor for tests/e2e; ignores the API keys.                                                                          |
+| `FAKE_EXTRACTOR_DELAY_MS` | `0`                        | Simulated latency per fake extraction.                                                                                                        |
+
+`EXTRACTOR=gemini` runs on Google's free tier, which has rate limits and models that are sometimes overloaded: a busy model is retried once, then the next fallback model is used, and stored results record which model answered. Token counts are a local estimate (length / 4), so Gemini uses no quota for them. Answers go through the same evidence check as Claude's.
 
 ## Layout
 
