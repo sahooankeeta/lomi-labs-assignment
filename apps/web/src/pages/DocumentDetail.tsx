@@ -1,12 +1,13 @@
-import { Alert, Button, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Button, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import type { DocumentDetailDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import { apiGet, apiPost } from '../api';
 import { EvidencePanel } from '../components/EvidencePanel';
 import { StatusPill } from '../components/StatusPill';
 import { ValueCard } from '../components/ValueCard';
+import { VersionBar } from '../components/VersionBar';
 import { progressLabel } from '../lib/format';
 import { pollInterval } from '../lib/poll';
 import { groupValues } from '../lib/values';
@@ -17,9 +18,16 @@ export function DocumentDetail() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // The shown version: `?version=N`, else the current one. Anything non-numeric is ignored.
+  const [params, setParams] = useSearchParams();
+  const raw = Number(params.get('version'));
+  const version = Number.isInteger(raw) && raw > 0 ? raw : undefined;
+
   const doc = useQuery({
-    queryKey: ['document', id],
-    queryFn: () => apiGet<DocumentDetailDto>(`/documents/${id}`),
+    // The ['document', id] prefix keeps the existing invalidations matching every version.
+    queryKey: ['document', id, version ?? 'current'],
+    queryFn: () =>
+      apiGet<DocumentDetailDto>(`/documents/${id}${version ? `?version=${version}` : ''}`),
     refetchInterval: (q) => pollInterval(q.state.data ? [q.state.data.status] : []),
   });
 
@@ -46,7 +54,9 @@ export function DocumentDetail() {
   // stale id (e.g. after a re-extraction) falls back instead of pointing at nothing.
   const selected =
     d.values.find((v) => v.id === selectedId)?.id ?? (groups.attention[0] ?? d.values[0])?.id;
-  const canReview = d.status === 'extracted';
+  const isCurrent = d.version.versionNo === d.currentVersionNo;
+  // Old versions are read-only (the server answers 409 too).
+  const canReview = d.status === 'extracted' && isCurrent;
 
   const sections: [string, typeof groups.attention][] = [
     ['Needs review', groups.attention],
@@ -64,6 +74,21 @@ export function DocumentDetail() {
         <StatusPill status={d.status} />
         <Text size="sm">{progressLabel(d.progress)}</Text>
       </Group>
+
+      <VersionBar
+        documentId={id}
+        versionNo={d.version.versionNo}
+        currentVersionNo={d.currentVersionNo}
+      />
+
+      {!isCurrent && (
+        <Alert color="gray">
+          Viewing v{d.version.versionNo} ({d.status}), read only.{' '}
+          <Anchor component="button" type="button" onClick={() => setParams({})}>
+            Go to current (v{d.currentVersionNo})
+          </Anchor>
+        </Alert>
+      )}
 
       {d.status === 'failed' && (
         <Alert color="red" title="Extraction failed">
