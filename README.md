@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`, the worker's LLM boundary (concurrency limiter; Claude, Gemini, fake and missing-key extractors). Next: API routes, the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
+> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`, the worker's LLM boundary (concurrency limiter; Claude, Gemini, fake and missing-key extractors), the API routes (upload, read, retry). Next: the remaining routes (versions, review, progress), the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
 
 PDFs go in, Claude extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -33,6 +33,7 @@ pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
 ```sh
 pnpm -r run build && pnpm -r run typecheck && pnpm -r run lint && pnpm -r run test
 pnpm --filter @lomi/db test:integration   # needs Postgres; uses TEST_DATABASE_URL
+pnpm --filter @lomi/api test:integration  # needs Postgres; run after (not alongside) the db suite, they share lomi_test
 pnpm --filter @lomi/worker smoke:claude   # live Claude call on the invoice fixture; needs ANTHROPIC_API_KEY, costs a few cents
 pnpm --filter @lomi/worker smoke:gemini   # check a Gemini key: lists models, one extraction on the invoice; needs GEMINI_API_KEY (free tier)
 ```
@@ -56,6 +57,23 @@ Unit tests (`*.test.ts`) need nothing running. Integration tests (`*.int.test.ts
 | `FAKE_EXTRACTOR_DELAY_MS` | `0`                        | Simulated latency per fake extraction.                                                                                                        |
 
 `EXTRACTOR=gemini` runs on Google's free tier, which has rate limits and models that are sometimes overloaded: a busy model is retried once, then the next fallback model is used, and stored results record which model answered. Token counts are a local estimate (length / 4), so Gemini uses no quota for them. Answers go through the same evidence check as Claude's.
+
+## API
+
+Errors are always `{ "error": "<code>", "message": "..." }`. The api only validates, writes to Postgres and enqueues a hint; it never parses PDFs or calls the LLM.
+
+| Route                       | Success                                                                                | Errors                                                                             |
+| --------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `POST /documents`           | `201` new document (v1 `queued`); `200` the existing one if the same file was uploaded | `400` bad `type`, no file, or not a PDF; `413` over 20 MB                          |
+| `GET /documents/:id`        | `200` document, current version (or `?version=N`) and its values                       | `400` id not a UUID or bad `version`; `404` unknown document or version            |
+| `POST /documents/:id/retry` | `202` failed version back to `queued`                                                  | `400` id not a UUID; `404` unknown document; `409` current version is not `failed` |
+
+```sh
+curl -F type=invoice -F file=@fixtures/documents/invoice-001.pdf localhost:3000/documents
+# {"id":"<uuid>","title":"invoice-001","type":"invoice","versionNo":1,"status":"queued"}
+curl localhost:3000/documents/<uuid>
+curl -X POST localhost:3000/documents/<uuid>/retry
+```
 
 ## Layout
 

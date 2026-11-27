@@ -1,4 +1,4 @@
-import { createDocumentWithV1 } from '@lomi/db';
+import { retryCurrentVersion, getDocumentDetail, createDocumentWithV1 } from '@lomi/db';
 import { UploadFields, type DocumentDetailDto, type DocumentSummaryDto } from '@lomi/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -85,5 +85,49 @@ export function documentRoutes(app: FastifyInstance, deps: Deps): void {
     }
 
     return reply.code(result.created ? 201 : 200).send(await summarize(deps, result.documentId));
+  });
+
+  /**
+   * `GET /documents/:id[?version=N]` -> `DocumentDetailDto` for the current version, or
+   * version N.
+   *
+   * - `200`: the document, the shown version and its values (empty until extraction finishes).
+   * - `400 bad_request`: `:id` is not a UUID, or `version` is not a positive integer.
+   * - `404 not_found`: no such document, or it has no version N.
+   */
+  app.get('/documents/:id', async (req): Promise<DocumentDetailDto> => {
+    const { id } = IdParams.parse(req.params);
+    const { version } = DetailQuery.parse(req.query);
+    const detail = await getDocumentDetail(deps.db, id, {
+      fields: deps.fields,
+      versionNo: version,
+    });
+    if (!detail) throw new HttpError(404, 'not_found', 'document or version not found');
+    return detail;
+  });
+
+  /**
+   * `POST /documents/:id/retry`: puts a `failed` current version back to `queued`.
+   *
+   * - `202` + `DocumentSummaryDto`: the version was reset (fresh attempt budget) and a job
+   *   `extract:<versionId>:0` is enqueued after the update commits. As with upload, a lost
+   *   hint is repaired by the reconciler.
+   * - `400 bad_request`: `:id` is not a UUID.
+   * - `404 not_found`: no such document.
+   * - `409 conflict`: the current version is not `failed` (also what a double click gets).
+   */
+  app.post('/documents/:id/retry', async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const result = await retryCurrentVersion(deps.db, id);
+    if (result.kind === 'not_found') throw new HttpError(404, 'not_found', 'document not found');
+    if (result.kind === 'not_failed') {
+      throw new HttpError(
+        409,
+        'conflict',
+        `only a failed version can be retried (it is ${result.status})`,
+      );
+    }
+    await deps.enqueue(result.versionId, result.attempts).catch(() => {});
+    return reply.code(202).send(await summarize(deps, id));
   });
 }
