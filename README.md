@@ -212,6 +212,7 @@ Short notes (context, decision, alternatives, consequences) in [`docs/decisions/
 
 ## TODO (documented as they're decided)
 
+- Delete a document (deferred). The plan is a hard delete of the document and all its versions in one locked transaction, keeping PDFs another document still uses. The worker would check before each chunk that its run still owns the version, so a delete stops LLM calls at the next chunk; in-flight calls are cut by the next lease renewal.
 - Draft → submit review flow. Decisions held as drafts in localStorage per version, a sticky submit bar, a before/after summary, and an all-or-nothing `POST /documents/:id/reviews`. Deferred: the MVP saves each click.
 - What happens when a new version arrives mid-extraction
 - How "unchanged evidence" is matched across versions
