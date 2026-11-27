@@ -56,7 +56,10 @@ describe('createDocumentWithV1', () => {
   });
 
   it('concurrent identical creates produce exactly one document', async () => {
-    const results = await Promise.all([createDocumentWithV1(db, input), createDocumentWithV1(db, input)]);
+    const results = await Promise.all([
+      createDocumentWithV1(db, input),
+      createDocumentWithV1(db, input),
+    ]);
     expect(await db.document.count()).toBe(1);
     expect(results.filter((r) => r.created)).toHaveLength(1);
     expect(results[0]!.documentId).toBe(results[1]!.documentId);
@@ -67,21 +70,32 @@ describe('getDocumentDetail', () => {
   it('shows a fresh document as queued with no values', async () => {
     const r = await createDocumentWithV1(db, input);
     const d = await getDocumentDetail(db, r.documentId, { fields });
-    expect(d).toMatchObject({ id: r.documentId, title: 'Inv', type: 'invoice', status: 'queued', values: [] });
+    expect(d).toMatchObject({
+      id: r.documentId,
+      title: 'Inv',
+      type: 'invoice',
+      status: 'queued',
+      values: [],
+    });
     expect(d!.version).toMatchObject({ id: r.versionId, versionNo: 1, status: 'queued' });
   });
 
   it('orders values by field order and derives review state', async () => {
     const r = await createDocumentWithV1(db, input);
     const mk = (field: string, value: string) =>
-      db.extractedValue.create({ data: { versionId: r.versionId, field, value } });
+      db.extractedValue.create({ data: { versionId: r.versionId, field, value, evidence: value } });
     const due = await mk('due_date', '2026-01-01');
     const total = await mk('total', '10');
     const vendor = await mk('vendor', 'Acme');
     await db.review.create({ data: { valueId: vendor.id, action: 'approve' } });
     await db.review.create({ data: { valueId: total.id, action: 'approve' } });
     await db.review.create({
-      data: { valueId: total.id, action: 'correct', correctedValue: '11', createdAt: new Date(Date.now() + 1000) },
+      data: {
+        valueId: total.id,
+        action: 'correct',
+        correctedValue: '11',
+        createdAt: new Date(Date.now() + 1000),
+      },
     });
     const d = await getDocumentDetail(db, r.documentId, { fields });
     expect(d!.values.map((v) => [v.field, v.fieldType, v.reviewState])).toEqual([
@@ -95,13 +109,28 @@ describe('getDocumentDetail', () => {
 
   it('reports carried_over when a carried review is set and no own review exists', async () => {
     const r = await createDocumentWithV1(db, input);
-    const old = await db.extractedValue.create({ data: { versionId: r.versionId, field: 'vendor', value: 'A' } });
+    const old = await db.extractedValue.create({
+      data: { versionId: r.versionId, field: 'vendor', value: 'A', evidence: 'A' },
+    });
     const rev = await db.review.create({ data: { valueId: old.id, action: 'approve' } });
     const v2 = await db.documentVersion.create({
-      data: { documentId: r.documentId, versionNo: 2, fileKey: 'b.pdf', sha256: 'b', status: 'extracted' },
+      data: {
+        documentId: r.documentId,
+        versionNo: 2,
+        fileKey: 'b.pdf',
+        sha256: 'b',
+        status: 'extracted',
+      },
     });
     await db.extractedValue.create({
-      data: { versionId: v2.id, field: 'vendor', value: 'A', previousValueId: old.id, carriedReviewId: rev.id },
+      data: {
+        versionId: v2.id,
+        field: 'vendor',
+        value: 'A',
+        evidence: 'A',
+        previousValueId: old.id,
+        carriedReviewId: rev.id,
+      },
     });
     await db.documentVersion.update({ where: { id: r.versionId }, data: { status: 'superseded' } });
     await db.document.update({ where: { id: r.documentId }, data: { currentVersionId: v2.id } });
@@ -115,7 +144,9 @@ describe('getDocumentDetail', () => {
 
   it('returns null for unknown document or absent version', async () => {
     const r = await createDocumentWithV1(db, input);
-    expect(await getDocumentDetail(db, '00000000-0000-4000-8000-000000000000', { fields })).toBeNull();
+    expect(
+      await getDocumentDetail(db, '00000000-0000-4000-8000-000000000000', { fields }),
+    ).toBeNull();
     expect(await getDocumentDetail(db, r.documentId, { fields, versionNo: 2 })).toBeNull();
   });
 });
@@ -123,7 +154,10 @@ describe('getDocumentDetail', () => {
 describe('retryCurrentVersion', () => {
   it('refuses a non-failed version', async () => {
     const r = await createDocumentWithV1(db, input);
-    expect(await retryCurrentVersion(db, r.documentId)).toEqual({ kind: 'not_failed', status: 'queued' });
+    expect(await retryCurrentVersion(db, r.documentId)).toEqual({
+      kind: 'not_failed',
+      status: 'queued',
+    });
   });
 
   it('returns not_found for an unknown document', async () => {
@@ -136,10 +170,26 @@ describe('retryCurrentVersion', () => {
     const r = await createDocumentWithV1(db, input);
     await db.documentVersion.update({
       where: { id: r.versionId },
-      data: { status: 'failed', error: 'boom', attempts: 3, activeRunId: '00000000-0000-4000-8000-000000000001', leaseExpiresAt: new Date() },
+      data: {
+        status: 'failed',
+        error: 'boom',
+        attempts: 3,
+        activeRunId: '00000000-0000-4000-8000-000000000001',
+        leaseExpiresAt: new Date(),
+      },
     });
-    expect(await retryCurrentVersion(db, r.documentId)).toEqual({ kind: 'retried', versionId: r.versionId, attempts: 0 });
+    expect(await retryCurrentVersion(db, r.documentId)).toEqual({
+      kind: 'retried',
+      versionId: r.versionId,
+      attempts: 0,
+    });
     const v = await db.documentVersion.findUniqueOrThrow({ where: { id: r.versionId } });
-    expect(v).toMatchObject({ status: 'queued', attempts: 0, error: null, activeRunId: null, leaseExpiresAt: null });
+    expect(v).toMatchObject({
+      status: 'queued',
+      attempts: 0,
+      error: null,
+      activeRunId: null,
+      leaseExpiresAt: null,
+    });
   });
 });
