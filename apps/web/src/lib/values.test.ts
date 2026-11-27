@@ -16,6 +16,9 @@ function v(field: string, over: Partial<ValueDto> = {}): ValueDto {
     evidenceEnd: null,
     reviewState: 'pending',
     latestReview: null,
+    carriedReview: null,
+    previous: null,
+    earlierCount: 0,
     ...over,
   };
 }

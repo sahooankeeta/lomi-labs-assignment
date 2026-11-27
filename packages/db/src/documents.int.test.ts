@@ -1,7 +1,12 @@
-import type { ExpectedFields } from '@lomi/shared';
+import { effectiveValue, type ExpectedFields } from '@lomi/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from './client.js';
-import { createDocumentWithV1, getDocumentDetail, retryCurrentVersion } from './documents.js';
+import {
+  createDocumentWithV1,
+  getDocumentDetail,
+  getValueHistory,
+  retryCurrentVersion,
+} from './documents.js';
 import { TEST_DATABASE_URL, truncateAll } from './testing.js';
 
 const fields: ExpectedFields = {
@@ -156,6 +161,261 @@ describe('getDocumentDetail', () => {
       await getDocumentDetail(db, '00000000-0000-4000-8000-000000000000', { fields }),
     ).toBeNull();
     expect(await getDocumentDetail(db, r.documentId, { fields, versionNo: 2 })).toBeNull();
+  });
+});
+
+/**
+ * Builds an invoice with a superseded v1 (parsedText `text1`) and an extracted, current v2
+ * (parsedText `text2`). Values are added by hand, as the carry-over would write them.
+ */
+async function twoVersions(text1: string, text2: string) {
+  const r = await createDocumentWithV1(db, input);
+  await db.documentVersion.update({
+    where: { id: r.versionId },
+    data: { status: 'superseded', parsedText: text1 },
+  });
+  const v2 = await db.documentVersion.create({
+    data: {
+      documentId: r.documentId,
+      versionNo: 2,
+      fileKey: 'b.pdf',
+      sha256: 'b',
+      status: 'extracted',
+      parsedText: text2,
+    },
+  });
+  await db.document.update({ where: { id: r.documentId }, data: { currentVersionId: v2.id } });
+  return { documentId: r.documentId, v1: r.versionId, v2: v2.id };
+}
+
+const TOTAL_TEXT = 'Total Due: $5,230.29';
+
+describe('getDocumentDetail previous and carried data', () => {
+  it('shows the previous value and its review for a changed value', async () => {
+    const t = await twoVersions(TOTAL_TEXT, 'Total Due: $6,126.45');
+    const old = await db.extractedValue.create({
+      data: { versionId: t.v1, field: 'total', value: '$5,230.29', evidence: TOTAL_TEXT },
+    });
+    await db.review.create({ data: { valueId: old.id, action: 'approve' } });
+    await db.extractedValue.create({
+      data: {
+        versionId: t.v2,
+        field: 'total',
+        value: '$6,126.45',
+        evidence: 'Total Due: $6,126.45',
+        previousValueId: old.id,
+      },
+    });
+    const d = await getDocumentDetail(db, t.documentId, { fields });
+    const v = d!.values[0]!;
+    expect(v).toMatchObject({ reviewState: 'pending', carriedReview: null });
+    expect(v.previous).toMatchObject({
+      versionNo: 1,
+      value: '$5,230.29',
+      effectiveValue: '$5,230.29',
+      evidence: TOTAL_TEXT,
+      reviewState: 'approved',
+      change: 'value',
+    });
+    expect(v.previous!.review!.action).toBe('approve');
+  });
+
+  it('only the quote changed gives change evidence', async () => {
+    const t = await twoVersions(TOTAL_TEXT, 'Amount payable 5230.29');
+    const old = await db.extractedValue.create({
+      data: { versionId: t.v1, field: 'total', value: '$5,230.29', evidence: TOTAL_TEXT },
+    });
+    await db.extractedValue.create({
+      data: {
+        versionId: t.v2,
+        field: 'total',
+        value: '$5,230.29',
+        evidence: 'Amount payable 5230.29',
+        previousValueId: old.id,
+      },
+    });
+    const d = await getDocumentDetail(db, t.documentId, { fields });
+    expect(d!.values[0]!.previous!.change).toBe('evidence');
+  });
+
+  it('an unchanged carried value gives change null', async () => {
+    const t = await twoVersions(TOTAL_TEXT, `Invoice\n${TOTAL_TEXT}`);
+    const old = await db.extractedValue.create({
+      data: { versionId: t.v1, field: 'total', value: '$5,230.29', evidence: TOTAL_TEXT },
+    });
+    const rev = await db.review.create({ data: { valueId: old.id, action: 'approve' } });
+    await db.extractedValue.create({
+      data: {
+        versionId: t.v2,
+        field: 'total',
+        value: '$5,230.29',
+        evidence: TOTAL_TEXT,
+        previousValueId: old.id,
+        carriedReviewId: rev.id,
+      },
+    });
+    const d = await getDocumentDetail(db, t.documentId, { fields });
+    expect(d!.values[0]!.previous!.change).toBeNull();
+    expect(d!.values[0]!.reviewState).toBe('carried_over');
+  });
+
+  it('a gap in both versions gives change gap', async () => {
+    const t = await twoVersions('x', 'y');
+    const old = await db.extractedValue.create({
+      data: { versionId: t.v1, field: 'total', gapReason: 'not found' },
+    });
+    await db.review.create({ data: { valueId: old.id, action: 'approve' } });
+    await db.extractedValue.create({
+      data: { versionId: t.v2, field: 'total', gapReason: 'not found', previousValueId: old.id },
+    });
+    const d = await getDocumentDetail(db, t.documentId, { fields });
+    const v = d!.values[0]!;
+    expect(v).toMatchObject({ reviewState: 'pending', carriedReview: null });
+    expect(v.previous!.change).toBe('gap');
+    expect(v.previous!.reviewState).toBe('approved');
+  });
+
+  it('returns the previous review note', async () => {
+    const t = await twoVersions(TOTAL_TEXT, 'z');
+    const old = await db.extractedValue.create({
+      data: { versionId: t.v1, field: 'total', value: '$5,230.29', evidence: TOTAL_TEXT },
+    });
+    await db.review.create({
+      data: { valueId: old.id, action: 'correct', correctedValue: '5000', note: 'per PO' },
+    });
+    await db.extractedValue.create({
+      data: { versionId: t.v2, field: 'total', value: '1', evidence: 'z', previousValueId: old.id },
+    });
+    const d = await getDocumentDetail(db, t.documentId, { fields });
+    expect(d!.values[0]!.previous!.review!.note).toBe('per PO');
+    expect(d!.values[0]!.previous!.effectiveValue).toBe('5000');
+  });
+
+  it('a carried correction is the effective value', async () => {
+    const t = await twoVersions(TOTAL_TEXT, TOTAL_TEXT);
+    const old = await db.extractedValue.create({
+      data: { versionId: t.v1, field: 'total', value: '$5,230.29', evidence: TOTAL_TEXT },
+    });
+    const rev = await db.review.create({
+      data: { valueId: old.id, action: 'correct', correctedValue: '5000' },
+    });
+    await db.extractedValue.create({
+      data: {
+        versionId: t.v2,
+        field: 'total',
+        value: '$5,230.29',
+        evidence: TOTAL_TEXT,
+        previousValueId: old.id,
+        carriedReviewId: rev.id,
+      },
+    });
+    const d = await getDocumentDetail(db, t.documentId, { fields });
+    const v = d!.values[0]!;
+    expect(v.reviewState).toBe('carried_over');
+    expect(v.carriedReview!.correctedValue).toBe('5000');
+    expect(effectiveValue(v)).toBe('5000');
+  });
+
+  it('currentVersionNo is the current version even when viewing version 1', async () => {
+    const t = await twoVersions('a', 'b');
+    const d = await getDocumentDetail(db, t.documentId, { fields, versionNo: 1 });
+    expect(d!.version.versionNo).toBe(1);
+    expect(d!.currentVersionNo).toBe(2);
+  });
+
+  it('values with no previous version have no previous data', async () => {
+    const r = await createDocumentWithV1(db, input);
+    await db.extractedValue.create({
+      data: { versionId: r.versionId, field: 'vendor', value: 'A', evidence: 'A' },
+    });
+    const d = await getDocumentDetail(db, r.documentId, { fields });
+    expect(d!.values[0]).toMatchObject({ previous: null, carriedReview: null, earlierCount: 0 });
+    expect(d!.currentVersionNo).toBe(1);
+  });
+
+  it('never throws when the shown version has no parsedText', async () => {
+    const t = await twoVersions('a', 'b');
+    await db.documentVersion.update({ where: { id: t.v2 }, data: { parsedText: null } });
+    const old = await db.extractedValue.create({
+      data: { versionId: t.v1, field: 'total', value: '1', evidence: '1' },
+    });
+    await db.extractedValue.create({
+      data: { versionId: t.v2, field: 'total', value: '1', evidence: '1', previousValueId: old.id },
+    });
+    const d = await getDocumentDetail(db, t.documentId, { fields });
+    expect(d!.values[0]!.previous!.change).toBe('value');
+  });
+});
+
+/** v1 -> v2 -> v3 chain for the `vendor` field: v1 approved then corrected, v2 carries it. */
+async function threeVersionChain() {
+  const t = await twoVersions('a', 'b');
+  const v3 = await db.documentVersion.create({
+    data: {
+      documentId: t.documentId,
+      versionNo: 3,
+      fileKey: 'c.pdf',
+      sha256: 'c',
+      status: 'extracted',
+      parsedText: 'c',
+    },
+  });
+  await db.documentVersion.update({ where: { id: t.v2 }, data: { status: 'superseded' } });
+  await db.document.update({ where: { id: t.documentId }, data: { currentVersionId: v3.id } });
+  const a = await db.extractedValue.create({
+    data: { versionId: t.v1, field: 'vendor', value: 'A', evidence: 'A' },
+  });
+  await db.review.create({ data: { valueId: a.id, action: 'approve' } });
+  const r2 = await db.review.create({
+    data: {
+      valueId: a.id,
+      action: 'correct',
+      correctedValue: 'AA',
+      createdAt: new Date(Date.now() + 1000),
+    },
+  });
+  const b = await db.extractedValue.create({
+    data: {
+      versionId: t.v2,
+      field: 'vendor',
+      value: 'A',
+      evidence: 'A',
+      previousValueId: a.id,
+      carriedReviewId: r2.id,
+    },
+  });
+  const c = await db.extractedValue.create({
+    data: { versionId: v3.id, field: 'vendor', value: 'C', evidence: 'C', previousValueId: b.id },
+  });
+  return { documentId: t.documentId, a, b, c, r2 };
+}
+
+describe('earlierCount and getValueHistory', () => {
+  it('earlierCount follows the chain', async () => {
+    const t = await threeVersionChain();
+    const cur = await getDocumentDetail(db, t.documentId, { fields });
+    expect(cur!.values[0]!.earlierCount).toBe(2);
+    const v2 = await getDocumentDetail(db, t.documentId, { fields, versionNo: 2 });
+    expect(v2!.values[0]!.earlierCount).toBe(1);
+    const v1 = await getDocumentDetail(db, t.documentId, { fields, versionNo: 1 });
+    expect(v1!.values[0]!.earlierCount).toBe(0);
+  });
+
+  it('getValueHistory returns the chain newest first with every review', async () => {
+    const t = await threeVersionChain();
+    const h = await getValueHistory(db, t.c.id);
+    expect(h!.field).toBe('vendor');
+    expect(h!.entries.map((e) => e.versionNo)).toEqual([3, 2, 1]);
+    expect(h!.entries[2]!.reviews.map((r) => r.action)).toEqual(['approve', 'correct']);
+    expect(h!.entries[1]!.carriedReview!.id).toBe(t.r2.id);
+    expect(h!.entries[1]!.reviewState).toBe('carried_over');
+    expect(h!.entries[0]!.reviewState).toBe('pending');
+    const fromV2 = await getValueHistory(db, t.b.id);
+    expect(fromV2!.entries.map((e) => e.versionNo)).toEqual([2, 1]);
+  });
+
+  it('returns null for an unknown value', async () => {
+    expect(await getValueHistory(db, '00000000-0000-4000-8000-000000000000')).toBeNull();
   });
 });
 
