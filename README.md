@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: Phase 2 complete (review UI and routes).** Phase 1 (ingest and extraction) survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Phase 2 adds review routes (approve, correct, confirm absent), progress, and a React UI with the PDF beside the values. Verified in a browser on the dev servers (`pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, UI on :5173); the compose images for worker, web and migrate have not been rebuilt with it yet (see "Review UI"). Not yet built: version upload and carry-over. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
+> **Status: Phase 2 complete (review UI and routes).** Phase 1 (ingest and extraction) survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Phase 2 adds review routes (approve, correct, confirm absent), progress, and a React UI with the PDF beside the values. Verified in a browser on the dev servers (`pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, UI on :5173); the compose web image now serves the pdf.js worker with the right MIME type, but the worker and migrate images have not been rebuilt with Phase 2 yet (see "Review UI"). Not yet built: version upload and carry-over. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
 PDFs go in, an LLM (Google Gemini; a fake extractor for tests) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -98,14 +98,14 @@ curl -X POST localhost:3000/documents/<uuid>/retry
 
 ## Review UI
 
-Run `pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, then open http://localhost:5173. This is where the flow below was verified in a browser; it works with the stock relative paths from `.env.example`.
+Run `pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, then open http://localhost:5173. This is where the flow below was verified in a browser; the api starts and serves seeded PDFs with the stock relative paths from `.env.example`.
 
-For the compose stack (http://localhost:8080), rebuild the images one service at a time first, so the new UI is served: `docker compose build api`, then `worker`, `web`, `migrate`, then `docker compose up -d`. The :8080 path has not been verified.
+For the compose stack (http://localhost:8080), rebuild the images one service at a time first, so the new UI is served: `docker compose build api`, then `worker`, `web`, `migrate`, then `docker compose up -d`. On :8080, the pdf.js worker (`assets/pdf.worker.*.mjs`) is checked to come back as `application/javascript` and `/api/documents` to return JSON; the full flow has not been clicked through there in a browser.
 
 1. **List.** Every document with its status and review progress. Upload a PDF with the type picker; the list polls while anything is queued or processing and stops once all are extracted. A non-PDF shows `file is not a PDF`.
-2. **Detail.** Click a document. Values are grouped into cards (To review, Done), with the evidence quote and "page N". The header shows progress.
+2. **Detail.** Click a document. Values are grouped into cards (Needs review, Carried over, Done), with the evidence quote and "page N". The header shows progress.
 3. **Approve or correct.** Approve moves a card to Done. Correct opens an inline field; a value that does not fit the field type (`abc` for a money field) shows `"abc" is not a valid money`. A corrected card shows the new value with the original struck through. A gap offers "Confirm absent".
-4. **Evidence.** Clicking a value opens the PDF tab at its page, and the Text tab scrolls to the quote, highlighted in `<mark>`.
+4. **Evidence.** Clicking a value jumps the PDF to its page without switching tabs; if the Text tab is open, it scrolls to the quote, highlighted in `<mark>`.
 
 The UI uses Mantine; the review model and that choice are in [0008](docs/decisions/0008-reviews.md).
 
