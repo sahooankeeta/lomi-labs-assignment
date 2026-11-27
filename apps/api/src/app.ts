@@ -77,6 +77,14 @@ export function buildApp(deps: Deps, log: Logger = createLogger('api')) {
     return send(500, 'internal', 'internal server error');
   });
 
+  // Unknown routes answer in the same { error, message } shape as every other error.
+  app.setNotFoundHandler((req, reply) =>
+    reply.code(404).send({
+      error: 'not_found',
+      message: `Route ${req.method} ${req.url} not found`,
+    } satisfies ApiError),
+  );
+
   // Close the PG pool and Redis connection when the server shuts down.
   app.addHook('onClose', async () => deps.close());
 

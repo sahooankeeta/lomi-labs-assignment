@@ -1,6 +1,6 @@
 import { retryCurrentVersion, getDocumentDetail, createDocumentWithV1 } from '@lomi/db';
 import { UploadFields, type DocumentDetailDto, type DocumentSummaryDto } from '@lomi/shared';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Deps } from '../app.js';
 import { HttpError } from '../errors.js';
@@ -31,6 +31,20 @@ async function summarize(deps: Deps, documentId: string): Promise<DocumentSummar
   };
 }
 
+/**
+ * Fire-and-forget enqueue, called after the response body is built. Not awaited: the
+ * queue's Redis connection retries forever, so an outage would hang the request.
+ * Postgres is the source of truth and the reconciler repairs a lost hint; a failure is
+ * only logged.
+ */
+function fireEnqueue(deps: Deps, req: FastifyRequest, versionId: string, attempts: number): void {
+  Promise.resolve()
+    .then(() => deps.enqueue(versionId, attempts))
+    .catch((err: unknown) =>
+      req.log.warn({ versionId, err }, 'enqueue failed; reconciler will retry'),
+    );
+}
+
 /** Registers the document routes. Validation and persistence only: no PDF parsing, no LLM. */
 export function documentRoutes(app: FastifyInstance, deps: Deps): void {
   /**
@@ -42,9 +56,10 @@ export function documentRoutes(app: FastifyInstance, deps: Deps): void {
    * - `400 bad_request`: bad or missing `type`, no file, or the file does not start with `%PDF-`.
    * - `413 payload_too_large`: file over 20 MB (multipart `fileSize` limit).
    *
-   * After the transaction commits, an extraction job is enqueued as a *hint*; Postgres is
-   * the source of truth, so a failed enqueue is swallowed and the worker's reconciler
-   * picks the queued version up.
+   * After the transaction commits, an extraction job is enqueued as a fire-and-forget
+   * *hint* (never awaited: with Redis down the queue waits for reconnection instead of
+   * failing, which would hang the request). Postgres is the source of truth, and the
+   * worker's reconciler picks up a queued version whose hint was lost.
    */
   app.post('/documents', async (req, reply) => {
     const fields: Record<string, string> = {};
@@ -77,14 +92,12 @@ export function documentRoutes(app: FastifyInstance, deps: Deps): void {
       sha256,
     });
 
-    // Enqueue only after the commit (a job must never reference a version that is not
-    // visible yet) and only for a new version. `deps.enqueue` never throws, but guard
-    // anyway: the upload already succeeded and must not fail over a lost hint.
-    if (result.created) {
-      await deps.enqueue(result.versionId, result.attempts).catch(() => {});
-    }
-
-    return reply.code(result.created ? 201 : 200).send(await summarize(deps, result.documentId));
+    // Build the body before the hint, so the response reflects what this request committed.
+    const body = await summarize(deps, result.documentId);
+    // Only after the commit (a job must never reference a version that is not visible yet)
+    // and only for a new version.
+    if (result.created) fireEnqueue(deps, req, result.versionId, result.attempts);
+    return reply.code(result.created ? 201 : 200).send(body);
   });
 
   /**
@@ -110,8 +123,8 @@ export function documentRoutes(app: FastifyInstance, deps: Deps): void {
    * `POST /documents/:id/retry`: puts a `failed` current version back to `queued`.
    *
    * - `202` + `DocumentSummaryDto`: the version was reset (fresh attempt budget) and a job
-   *   `extract:<versionId>:0` is enqueued after the update commits. As with upload, a lost
-   *   hint is repaired by the reconciler.
+   *   `extract:<versionId>:0` is enqueued (fire-and-forget, after the update commits). As
+   *   with upload, a lost hint is repaired by the reconciler.
    * - `400 bad_request`: `:id` is not a UUID.
    * - `404 not_found`: no such document.
    * - `409 conflict`: the current version is not `failed` (also what a double click gets).
@@ -127,7 +140,8 @@ export function documentRoutes(app: FastifyInstance, deps: Deps): void {
         `only a failed version can be retried (it is ${result.status})`,
       );
     }
-    await deps.enqueue(result.versionId, result.attempts).catch(() => {});
-    return reply.code(202).send(await summarize(deps, id));
+    const body = await summarize(deps, id);
+    fireEnqueue(deps, req, result.versionId, result.attempts);
+    return reply.code(202).send(body);
   });
 }

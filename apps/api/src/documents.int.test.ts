@@ -158,6 +158,63 @@ describe('POST /documents', () => {
   });
 });
 
+describe('enqueue is fire-and-forget', () => {
+  it('upload returns 201 promptly even if enqueue never settles', async () => {
+    enqueue.mockReturnValue(new Promise(() => {}));
+    const res = await upload(makeApp());
+    expect(res.statusCode).toBe(201);
+    expect(await db.documentVersion.count({ where: { status: 'queued' } })).toBe(1);
+  }, 5000);
+
+  it('retry returns 202 promptly even if enqueue never settles', async () => {
+    const app = makeApp();
+    const { id } = (await upload(app)).json();
+    const doc = await db.document.findUniqueOrThrow({ where: { id } });
+    await db.documentVersion.update({
+      where: { id: doc.currentVersionId! },
+      data: { status: 'failed' },
+    });
+    enqueue.mockReturnValue(new Promise(() => {}));
+    const res = await app.inject({ method: 'POST', url: `/documents/${id}/retry` });
+    expect(res.statusCode).toBe(202);
+    expect(await db.documentVersion.count({ where: { status: 'queued' } })).toBe(1);
+  }, 5000);
+
+  it('logs a rejected enqueue at warn', async () => {
+    enqueue.mockRejectedValue(new Error('redis down'));
+    const warn = vi.fn();
+    const log = createLogger('api-test', { level: 'silent' });
+    log.warn = warn as never;
+    const app = buildApp(
+      {
+        pingDb: async () => {},
+        pingRedis: async () => {},
+        close: async () => {},
+        db,
+        files,
+        fields: loadExpectedFields(fixturesDir),
+        enqueue,
+      },
+      log,
+    );
+    expect((await upload(app)).statusCode).toBe(201);
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+  });
+});
+
+describe('unknown routes', () => {
+  it('404s in the { error, message } shape', async () => {
+    const res = await makeApp().inject({ method: 'GET', url: '/nope' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: 'not_found', message: 'Route GET /nope not found' });
+  });
+
+  it('leaves /health alone', async () => {
+    const res = await makeApp().inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
 describe('GET /documents/:id', () => {
   it('returns the current version with no values before extraction', async () => {
     const app = makeApp();
