@@ -167,6 +167,8 @@ The script needs bash (Git Bash on Windows), `curl`, `node` and `docker compose`
 
 ### Live extraction check
 
+The Claude path is covered by unit tests with a stubbed client, but it has **not yet run against the live API**; run `pnpm --filter @lomi/worker smoke:claude` with a key to check it. The run below used Gemini.
+
 Run with `EXTRACTOR=gemini` (free tier) on 2026-11-27: the three fixtures were uploaded as new documents and extracted by `gemini-3.6-flash` (no fallback needed, one attempt each, 33 to 42 s per document). Result: **16 of 16 fields correct**, including the expected gap.
 
 | Fixture       | Time   | Values                                                                                                                                                                                                                  |

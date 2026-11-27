@@ -14,7 +14,7 @@ const DEFAULT_MAX_INFLIGHT = 4;
  */
 export class ClaudeExtractor implements Extractor {
   readonly model: string;
-  private readonly client: Anthropic;
+  private readonly client: Pick<Anthropic, 'messages'>;
   // One limiter for countTokens AND extract: both draw on the same API rate limits, so
   // a single cap bounds total in-flight calls however the worker mixes them.
   private readonly limiter: Limiter;
@@ -22,13 +22,19 @@ export class ClaudeExtractor implements Extractor {
   /**
    * @param opts.timeoutMs per-request timeout (default 60000); the SDK also retries transient errors.
    * @param opts.maxInflight max concurrent API calls across both methods (default 4).
+   * @param opts.client replaces the real SDK client (tests); `apiKey` and `timeoutMs` are then unused.
    */
-  constructor(opts: { apiKey: string; model: string; timeoutMs?: number; maxInflight?: number }) {
+  constructor(opts: {
+    apiKey: string;
+    model: string;
+    timeoutMs?: number;
+    maxInflight?: number;
+    client?: Pick<Anthropic, 'messages'>;
+  }) {
     this.model = opts.model;
-    this.client = new Anthropic({
-      apiKey: opts.apiKey,
-      timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    });
+    this.client =
+      opts.client ??
+      new Anthropic({ apiKey: opts.apiKey, timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS });
     this.limiter = createLimiter(opts.maxInflight ?? DEFAULT_MAX_INFLIGHT);
   }
 

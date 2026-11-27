@@ -9,7 +9,7 @@ end to end, and the tests must not call any API.
 ## Decision
 
 - Responses are constrained with a JSON schema (`output_config.format` for Claude; the equivalent
-  response schema for Gemini). Forced tool calls are rejected by current Claude models.
+  response schema for Gemini). Structured outputs are preferred over forcing a tool call.
 - **Claude is the default** (`EXTRACTOR=claude`, `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`), as
   the spec says. A missing key makes the version `failed`, visibly and retryably.
 - **Gemini is the free alternative** (`EXTRACTOR=gemini`, free tier). A busy model (429, 503, timeout) is
@@ -22,7 +22,7 @@ end to end, and the tests must not call any API.
 ## Alternatives
 
 - Claude only. Rejected: the free tier lets the project run without credits.
-- Forced tool use for structure. Rejected: current models refuse it.
+- Forced tool use for structure. Rejected: structured outputs constrain the schema directly.
 
 ## Consequences
 
