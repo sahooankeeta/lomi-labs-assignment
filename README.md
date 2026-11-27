@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: Phase 1 complete (ingest and extraction).** Upload a PDF, get values with verbatim evidence, page and offsets, or gaps with reasons; survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Not yet built: version upload and carry-over, review and progress routes, the UI beyond the skeleton. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
+> **Status: Phase 2 complete (review UI and routes).** Phase 1 (ingest and extraction) survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Phase 2 adds review routes (approve, correct, confirm absent), progress, and a React UI with the PDF beside the values. Not yet built: version upload and carry-over. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
 PDFs go in, an LLM (Google Gemini; a fake extractor for tests) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -94,6 +94,17 @@ curl localhost:3000/documents/<uuid>
 curl -X POST localhost:3000/documents/<uuid>/retry
 ```
 
+## Review UI
+
+Open http://localhost:8080.
+
+1. **List.** Every document with its status and review progress. Upload a PDF with the type picker; the list polls while anything is queued or processing and stops once all are extracted. A non-PDF shows `file is not a PDF`.
+2. **Detail.** Click a document. Values are grouped into cards (To review, Done), with the evidence quote and "page N". The header shows progress.
+3. **Approve or correct.** Approve moves a card to Done. Correct opens an inline field; a value that does not fit the field type (`abc` for a money field) shows `"abc" is not a valid money`. A corrected card shows the new value with the original struck through. A gap offers "Confirm absent".
+4. **Evidence.** Clicking a value opens the PDF tab at its page, and the Text tab scrolls to the quote, highlighted in `<mark>`.
+
+The UI uses Mantine; the review model and that choice are in [0008](docs/decisions/0008-reviews.md).
+
 ## Worker
 
 Postgres is the truth; BullMQ jobs are only hints (`{ versionId }`). A job runs `processVersion`:
@@ -155,7 +166,7 @@ fixtures/      Sample PDFs and manifests from the assignment.
 | Queue        | BullMQ on Redis 7        | Coordinates work only. Postgres is the source of truth                                                                                                                                                                                               |
 | LLM          | Gemini (default), fake   | JSON-schema structured outputs; the same evidence check applies to both ([0005](docs/decisions/0005-structured-outputs-and-model.md))                                                                                                                |
 | PDF text     | unpdf                    | Maintained, pure JS                                                                                                                                                                                                                                  |
-| UI           | Vite + React 19          | Plain SPA, no SSR needed                                                                                                                                                                                                                             |
+| UI           | Vite + React 19, Mantine | Plain SPA, no SSR needed. Mantine: the owner asked for a component library, it needs no Tailwind setup, and it supports React 19                                                                                                                    |
 | Tests / lint | Vitest, ESLint, Prettier |                                                                                                                                                                                                                                                      |
 
 ## Verify
@@ -193,10 +204,11 @@ Full model in `packages/db/prisma/schema.prisma`.
 
 ## Decisions
 
-Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values.
+Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values, reviews ([0008](docs/decisions/0008-reviews.md)).
 
 ## TODO (documented as they're decided)
 
+- Draft → submit review flow. Decisions held as drafts in localStorage per version, a sticky submit bar, a before/after summary, and an all-or-nothing `POST /documents/:id/reviews`. Deferred: the MVP saves each click.
 - What happens when a new version arrives mid-extraction
 - How "unchanged evidence" is matched across versions
 - Polling vs streaming in the UI
