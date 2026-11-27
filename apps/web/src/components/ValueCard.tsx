@@ -14,7 +14,7 @@ import type { ReviewResultDto, ValueDto, ValueReviewState } from '@lomi/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { apiPost } from '../api';
-import { effectiveValue, previousLabel } from '../lib/values';
+import { effectiveValue, previousLabel, primaryAction, type ReviewBody } from '../lib/values';
 import { PreviousBlock } from './PreviousBlock';
 import { ValueHistory } from './ValueHistory';
 
@@ -24,8 +24,6 @@ const STATE_COLOR: Record<ValueReviewState, string> = {
   corrected: 'blue',
   carried_over: 'gray',
 };
-
-type ReviewBody = { action: 'approve' } | { action: 'correct'; value: string; note?: string };
 
 interface Props {
   value: ValueDto;
@@ -65,6 +63,7 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
   // corrected value with the extracted one struck through.
   const corrected = (value.latestReview ?? value.carriedReview)?.action === 'correct';
   const label = previousLabel(value);
+  const primary = primaryAction(value);
   const disabled = !canReview || review.isPending;
 
   const openCorrect = (prefill: string) => {
@@ -207,10 +206,10 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
               disabled={disabled}
               onClick={(e) => {
                 e.stopPropagation();
-                review.mutate({ action: 'approve' });
+                review.mutate(primary.body);
               }}
             >
-              {isGap ? 'Confirm absent' : 'Approve'}
+              {primary.label}
             </Button>
             <Button
               size="xs"

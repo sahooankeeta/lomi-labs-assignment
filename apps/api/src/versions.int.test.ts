@@ -190,6 +190,10 @@ describe('GET /values/:id/history', () => {
         evidence: '$100',
       },
     });
+    await db.review.create({ data: { valueId: v1.id, action: 'approve' } });
+    await db.review.create({
+      data: { valueId: v1.id, action: 'correct', correctedValue: '101.00' },
+    });
     await uploadVersion(app, id);
     const doc2 = await db.document.findUniqueOrThrow({ where: { id } });
     const v2 = await db.extractedValue.create({
@@ -208,6 +212,10 @@ describe('GET /values/:id/history', () => {
     expect(body.entries).toHaveLength(2);
     expect(body.entries[0].versionNo).toBe(2);
     expect(body.entries[1].versionNo).toBe(1);
+    expect(body.entries[1].reviews.map((r: { action: string }) => r.action)).toEqual([
+      'approve',
+      'correct',
+    ]);
   });
 
   it('404s an unknown value and 400s a non-uuid id', async () => {

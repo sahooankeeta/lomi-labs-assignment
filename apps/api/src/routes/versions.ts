@@ -38,9 +38,12 @@ export function versionRoutes(app: FastifyInstance, deps: Deps): void {
 
     const body = await summarize(deps, id);
     if (result.kind === 'unchanged') return reply.code(200).send(body);
+    // Built from this call's result, not the document's current version: a concurrent upload
+    // may already have moved the current version on to v3.
+    const createdBody = { ...body, versionNo: result.versionNo, status: 'queued' as const };
     // Only after the commit: a job must never reference a version that is not visible yet.
     fireEnqueue(deps, req, result.versionId, result.attempts);
-    return reply.code(201).send(body);
+    return reply.code(201).send(createdBody);
   });
 
   /**

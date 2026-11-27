@@ -56,3 +56,27 @@ export function previousLabel(v: ValueDto): string | null {
       return `unchanged from v${n} (not reviewed there)`;
   }
 }
+
+/** Body of a review request, as `POST /values/:id/review` takes it. */
+export type ReviewBody = { action: 'approve' } | { action: 'correct'; value: string; note?: string };
+
+/**
+ * The card's primary button. A value that carries a correction and has no review of its own
+ * must re-send that correction ("Keep correction"): an own approve would outrank the carried
+ * correction and silently revert the value to the re-extracted text.
+ */
+export function primaryAction(v: ValueDto): { label: string; body: ReviewBody } {
+  const carried = v.carriedReview;
+  if (
+    v.reviewState === 'carried_over' &&
+    !v.latestReview &&
+    carried?.action === 'correct' &&
+    carried.correctedValue !== null
+  ) {
+    return {
+      label: 'Keep correction',
+      body: { action: 'correct', value: carried.correctedValue },
+    };
+  }
+  return { label: v.value === null ? 'Confirm absent' : 'Approve', body: { action: 'approve' } };
+}

@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router';
 import { apiGet, apiUpload } from '../api';
 import { uploadErrorMessage } from '../lib/format';
 import { pollInterval } from '../lib/poll';
-import { versionOptions } from '../lib/versions';
+import { versionOptionsOrFallback } from '../lib/versions';
 
 interface Props {
   documentId: string;
@@ -58,7 +58,7 @@ export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
       <Group align="flex-end">
         <Select
           label="Version"
-          data={versionOptions(versions.data ?? [], currentVersionNo)}
+          data={versionOptionsOrFallback(versions.data, versionNo, currentVersionNo)}
           value={String(versionNo)}
           onChange={choose}
           allowDeselect={false}

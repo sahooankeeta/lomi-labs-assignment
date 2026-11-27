@@ -13,3 +13,16 @@ export function versionOptions(
     label: `v${v.versionNo} · ${v.status}${v.versionNo === currentVersionNo ? ' (current)' : ''}`,
   }));
 }
+
+/**
+ * Like `versionOptions`, but while the versions list has not loaded (`undefined`) it offers
+ * one `v<n>` option for the shown version, so the Select never renders blank.
+ */
+export function versionOptionsOrFallback(
+  versions: Pick<VersionSummaryDto, 'versionNo' | 'status'>[] | undefined,
+  shownVersionNo: number,
+  currentVersionNo: number,
+): { value: string; label: string }[] {
+  if (versions) return versionOptions(versions, currentVersionNo);
+  return [{ value: String(shownVersionNo), label: `v${shownVersionNo}` }];
+}

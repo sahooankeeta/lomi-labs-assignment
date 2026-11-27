@@ -1,6 +1,6 @@
 import type { PreviousValueDto, ReviewDto, ValueDto } from '@lomi/shared';
 import { describe, expect, it } from 'vitest';
-import { effectiveValue, groupValues, previousLabel } from './values';
+import { effectiveValue, groupValues, previousLabel, primaryAction } from './values';
 
 function v(field: string, over: Partial<ValueDto> = {}): ValueDto {
   return {
@@ -140,5 +140,38 @@ describe('previousLabel', () => {
         }),
       ),
     ).toBe('carried over from v2 (approved)');
+  });
+});
+
+describe('primaryAction', () => {
+  const rev = (action: 'approve' | 'correct', correctedValue: string | null = null): ReviewDto => ({
+    id: 'r',
+    action,
+    correctedValue,
+    note: null,
+    createdAt: '2026-01-01T00:00:00Z',
+  });
+
+  it('keeps a carried correction instead of approving over it', () => {
+    expect(
+      primaryAction(v('a', { reviewState: 'carried_over', carriedReview: rev('correct', '42') })),
+    ).toEqual({ label: 'Keep correction', body: { action: 'correct', value: '42' } });
+  });
+
+  it('approves a carried approval', () => {
+    expect(
+      primaryAction(v('a', { reviewState: 'carried_over', carriedReview: rev('approve') })),
+    ).toEqual({ label: 'Approve', body: { action: 'approve' } });
+  });
+
+  it('confirms a gap as absent', () => {
+    expect(primaryAction(v('a', { value: null }))).toEqual({
+      label: 'Confirm absent',
+      body: { action: 'approve' },
+    });
+  });
+
+  it('approves a pending value', () => {
+    expect(primaryAction(v('a'))).toEqual({ label: 'Approve', body: { action: 'approve' } });
   });
 });
