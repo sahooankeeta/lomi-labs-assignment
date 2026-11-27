@@ -42,3 +42,51 @@ export const INVOICE_V1_OUTPUT = {
     },
   ],
 };
+
+export const LEASE_FIELDS: FieldDef[] = [
+  { field: 'tenant_name', type: 'string' },
+  { field: 'monthly_rent', type: 'money' },
+  { field: 'security_deposit', type: 'money' },
+  { field: 'lease_start', type: 'date' },
+  { field: 'term_months', type: 'number' },
+];
+
+/** Lease excerpt clause 2 as unpdf parses it (the term wraps across a line break). */
+export const LEASE_TERM_CLAUSE =
+  '1. PARTIES. This Lease Agreement is entered into between Harborview\nResidential LP ("Landlord") and Dana Okafor ("Tenant").\n2. TERM. The initial term of this Lease shall be twenty-four (24)\nmonths, commencing on March 1, 2025 and ending on February 28, 2027,';
+
+/** A correct model answer for the lease excerpt; term_months is returned "as written" (Gemini, live run). */
+export const LEASE_OUTPUT = {
+  fields: [
+    {
+      field: 'tenant_name',
+      value: 'Dana Okafor',
+      evidence: 'Dana Okafor ("Tenant")',
+      gap_reason: null,
+    },
+    {
+      field: 'monthly_rent',
+      value: '$2,350.00',
+      evidence: 'monthly rent of $2,350.00',
+      gap_reason: null,
+    },
+    {
+      field: 'security_deposit',
+      value: '$3,525.00',
+      evidence: 'the sum of $3,525.00',
+      gap_reason: null,
+    },
+    {
+      field: 'lease_start',
+      value: 'March 1, 2025',
+      evidence: 'commencing on March 1, 2025',
+      gap_reason: null,
+    },
+    {
+      field: 'term_months',
+      value: 'twenty-four (24)',
+      evidence: 'twenty-four (24)\nmonths',
+      gap_reason: null,
+    },
+  ],
+};

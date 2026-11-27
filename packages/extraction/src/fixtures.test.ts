@@ -3,7 +3,13 @@ import { readFile } from 'node:fs/promises';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { describe, expect, it } from 'vitest';
 import { joinPages } from './pages.js';
-import { INVOICE_FIELDS, INVOICE_V1, INVOICE_V1_OUTPUT } from './testdata.js';
+import {
+  INVOICE_FIELDS,
+  INVOICE_V1,
+  INVOICE_V1_OUTPUT,
+  LEASE_FIELDS,
+  LEASE_OUTPUT,
+} from './testdata.js';
 import { validateChunkOutput } from './validate.js';
 
 const docs = new URL('../../../fixtures/documents/', import.meta.url);
@@ -30,6 +36,12 @@ describe('fixture PDFs', () => {
     const { text } = await parse('invoice-001.pdf');
     expect(text).toBe(INVOICE_V1);
     const out = validateChunkOutput(INVOICE_V1_OUTPUT, INVOICE_FIELDS, { text, start: 0 });
+    expect(out.filter((c) => c.kind === 'value')).toHaveLength(5);
+  });
+
+  it('a correct answer for the lease validates to 5 values on the real text', async () => {
+    const { text } = await parse('lease-excerpt-001.pdf');
+    const out = validateChunkOutput(LEASE_OUTPUT, LEASE_FIELDS, { text, start: 0 });
     expect(out.filter((c) => c.kind === 'value')).toHaveLength(5);
   });
 });

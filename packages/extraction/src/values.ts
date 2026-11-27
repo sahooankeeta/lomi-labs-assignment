@@ -4,6 +4,11 @@ import { normalizeForMatch } from './text.js';
 /**
  * Per-type value comparison. Values compare by canonical form, so `$1,985.00` and `1985`
  * are the same money value and `March 1, 2025` equals `2025-03-01`.
+ *
+ * Numeric types (money, number, percent) also accept a value written with surrounding words, because
+ * models copy "as written" (`twenty-four (24)`, `24 months`, `USD 1,985.00`). The value's canonical
+ * form is its one distinct number; a value with no number, or with two or more different numbers
+ * (`24 or 25`), does not parse. Values are stored as returned; only the comparison is lenient.
  */
 
 const NUMERIC = /^(-)?[$€£]?(\d[\d,]*)(?:\.(\d+))?%?$/u;
@@ -85,13 +90,31 @@ function canonicalString(raw: string): string {
   return normalizeForMatch(raw).text.toLowerCase();
 }
 
-/** Canonical form of `value` for its field type; `null` when it doesn't parse. */
+/**
+ * Canonical number of a numeric value: the bare number if the whole value is one, otherwise the single
+ * distinct number found among its number tokens. `null` for zero or several distinct numbers.
+ */
+function canonicalNumericValue(raw: string): string | null {
+  const bare = canonicalNumber(raw);
+  if (bare !== null) return bare;
+  const distinct = new Set<string>();
+  for (const m of raw.matchAll(NUMBER_TOKEN)) {
+    const n = canonicalNumber(m[0]);
+    if (n !== null) distinct.add(n);
+  }
+  return distinct.size === 1 ? [...distinct][0]! : null;
+}
+
+/**
+ * Canonical form of `value` for its field type; `null` when it doesn't parse. Numeric types may carry
+ * words around exactly one number (see the file comment).
+ */
 export function normalizeValue(value: string, type: FieldType): string | null {
   switch (type) {
     case 'money':
     case 'number':
     case 'percent':
-      return canonicalNumber(value);
+      return canonicalNumericValue(value);
     case 'date':
       return canonicalDate(value);
     case 'string': {
@@ -101,7 +124,11 @@ export function normalizeValue(value: string, type: FieldType): string | null {
   }
 }
 
-/** True when `value` (of `type`) is literally stated somewhere in `quote`. */
+/**
+ * True when `value` (of `type`) is literally stated somewhere in `quote`. For numeric types the value's
+ * canonical number must equal some number token in the quote, so words around the number in `value`
+ * (`twenty-four (24)`) never count as evidence by themselves: the digits must be in the quote.
+ */
 export function valueInQuote(value: string, quote: string, type: FieldType): boolean {
   const want = normalizeValue(value, type);
   if (want === null) return false;

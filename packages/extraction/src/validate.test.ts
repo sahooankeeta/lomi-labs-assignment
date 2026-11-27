@@ -1,7 +1,14 @@
 import type { Candidate } from '@lomi/shared';
 import { describe, expect, it } from 'vitest';
 import { buildPrompt } from './prompt.js';
-import { INVOICE_FIELDS, INVOICE_V1, INVOICE_V1_OUTPUT } from './testdata.js';
+import {
+  INVOICE_FIELDS,
+  INVOICE_V1,
+  INVOICE_V1_OUTPUT,
+  LEASE_FIELDS,
+  LEASE_OUTPUT,
+  LEASE_TERM_CLAUSE,
+} from './testdata.js';
 import { validateChunkOutput } from './validate.js';
 
 const chunk = { text: INVOICE_V1, start: 0 };
@@ -141,6 +148,20 @@ describe('validateChunkOutput', () => {
   });
 });
 
+describe('validateChunkOutput numeric values with words', () => {
+  it('accepts "twenty-four (24)" for term_months and slices offsets to the evidence', () => {
+    const out = validateChunkOutput(LEASE_OUTPUT, LEASE_FIELDS, {
+      text: LEASE_TERM_CLAUSE,
+      start: 0,
+    });
+    const term = byField(out, 'term_months');
+    expect(term).toMatchObject({ kind: 'value', value: 'twenty-four (24)' });
+    expect(term.kind === 'value' && LEASE_TERM_CLAUSE.slice(term.start, term.end)).toBe(
+      'twenty-four (24)\nmonths',
+    );
+  });
+});
+
 describe('buildPrompt', () => {
   it('lists every field and wraps the chunk text', () => {
     const { system, user } = buildPrompt('invoice', INVOICE_FIELDS, INVOICE_V1, {
@@ -148,6 +169,7 @@ describe('buildPrompt', () => {
       chunkCount: 3,
     });
     expect(system).toContain('shortest verbatim passage');
+    expect(system).toContain('without surrounding words');
     for (const f of INVOICE_FIELDS) expect(user).toContain(`${f.field} (${f.type})`);
     expect(user).toContain(INVOICE_V1);
     expect(user).toContain('part 2 of 3');
