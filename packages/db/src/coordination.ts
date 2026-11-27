@@ -392,6 +392,8 @@ async function carryLinks(
     const p = prevByField.get(next.field);
     if (!p) continue;
     const type = typeByField.get(next.field);
+    // Parsed text is always stored before finish; null would leave nothing to compare against,
+    // so carry nothing but still link the previous value.
     const unchanged =
       type !== undefined && self.parsedText !== null && isUnchanged(p, next, self.parsedText, type);
     links.set(next.field, {

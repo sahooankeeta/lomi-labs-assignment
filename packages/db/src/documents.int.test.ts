@@ -275,6 +275,31 @@ describe('getDocumentDetail previous and carried data', () => {
     expect(v.previous!.reviewState).toBe('approved');
   });
 
+  it('a one-sided gap gives change value, in either direction', async () => {
+    for (const [oldGap, newGap] of [
+      [false, true],
+      [true, false],
+    ] as const) {
+      const t = await twoVersions('x', 'y');
+      const old = await db.extractedValue.create({
+        data: oldGap
+          ? { versionId: t.v1, field: 'total', gapReason: 'not found' }
+          : { versionId: t.v1, field: 'total', value: '5', evidence: 'x' },
+      });
+      await db.extractedValue.create({
+        data: {
+          versionId: t.v2,
+          field: 'total',
+          previousValueId: old.id,
+          ...(newGap ? { gapReason: 'not found' } : { value: '5', evidence: 'y' }),
+        },
+      });
+      const d = await getDocumentDetail(db, t.documentId, { fields });
+      expect(d!.values[0]!.previous!.change).toBe('value');
+      await truncateAll(db);
+    }
+  });
+
   it('returns the previous review note', async () => {
     const t = await twoVersions(TOTAL_TEXT, 'z');
     const old = await db.extractedValue.create({

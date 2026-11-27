@@ -107,6 +107,38 @@ describe('createVersion', () => {
     );
   });
 
+  it('does not supersede a version whose finish commits during the upload', async () => {
+    const d = await makeDoc();
+    const claim = await claimVersion(db, d.v1, { model: 'm' });
+    if (claim.kind !== 'claimed') throw new Error('not claimed');
+
+    // Tx A stands in for finishVersion: v1 -> extracted, uncommitted, row lock held.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const hasLock = new Promise<void>((r) => (locked = r));
+    const finishTx = db.$transaction(async (tx) => {
+      await tx.documentVersion.update({ where: { id: d.v1 }, data: { status: 'extracted' } });
+      locked();
+      await gate;
+    });
+    await hasLock;
+
+    // createVersion reads v1 as still 'extracting' (READ COMMITTED) and then blocks on the row.
+    const upload = createVersion(db, d.documentId, up('b'));
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await finishTx;
+    const r = created(await upload);
+
+    expect(r.superseded).toEqual([]);
+    expect((await db.documentVersion.findUniqueOrThrow({ where: { id: d.v1 } })).status).toBe(
+      'extracted',
+    );
+    const doc = await db.document.findUniqueOrThrow({ where: { id: d.documentId } });
+    expect(doc.currentVersionId).toBe(r.versionId);
+  });
+
   it('same file as the current version is unchanged; no row, no supersede', async () => {
     const d = await makeDoc('a');
     const r = await createVersion(db, d.documentId, up('a'));

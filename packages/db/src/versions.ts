@@ -39,11 +39,12 @@ export type CreateVersionResult =
  * Dedupe is against the *current* version only: re-uploading an older file is a revert
  * and becomes a new version.
  *
- * Unfinished (`queued`/`extracting`) versions become `superseded` and their lease is
+ * Versions still `queued`/`extracting` when the statement runs become `superseded` and their lease is
  * cleared. `activeRunId` is kept as the record of who held it; every worker write is
  * guarded by `status = 'extracting'`, so a stale worker cannot write. Their `running`
  * runs are marked `abandoned` here because a run that loses its lease just returns
- * without marking itself. Values, reviews and finished/failed versions are never touched.
+ * without marking itself. Values, reviews and versions that finished or failed (even one finishing during this
+ * upload) are never touched.
  */
 export async function createVersion(
   db: Db,
@@ -77,16 +78,17 @@ export async function createVersion(
     });
     const versionNo = (_max.versionNo ?? 0) + 1;
 
-    const unfinished = await tx.documentVersion.findMany({
-      where: { documentId, status: { in: ['queued', 'extracting'] } },
-      select: { id: true },
-    });
-    const superseded = unfinished.map((v) => v.id);
+    // One statement, guarded by status. A read-then-update by id would race a worker's
+    // finishVersion: under READ COMMITTED the read still sees `extracting` for a row whose
+    // finish is uncommitted, and the update (after waiting on the row lock) would overwrite
+    // `extracted` with `superseded`. Re-checking `status` after the lock wait avoids that.
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      UPDATE document_versions
+      SET status = 'superseded'::version_status, lease_expires_at = NULL
+      WHERE document_id = ${documentId}::uuid AND status IN ('queued', 'extracting')
+      RETURNING id`;
+    const superseded = rows.map((r) => r.id);
     if (superseded.length > 0) {
-      await tx.documentVersion.updateMany({
-        where: { id: { in: superseded } },
-        data: { status: 'superseded', leaseExpiresAt: null },
-      });
       await tx.extractionRun.updateMany({
         where: { versionId: { in: superseded }, status: 'running' },
         data: { status: 'abandoned', finishedAt: new Date() },
