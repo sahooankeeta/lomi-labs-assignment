@@ -333,6 +333,9 @@ importers:
       '@lomi/config':
         specifier: workspace:*
         version: link:../config
+      unpdf:
+        specifier: ^2.2.2
+        version: 2.2.2
 
   packages/files:
     devDependencies:
