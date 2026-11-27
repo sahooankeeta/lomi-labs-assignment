@@ -8,10 +8,9 @@ stuck in `extracting`, and a re-run must never produce duplicate or interleaved 
 ## Decision
 
 - **Claim:** one conditional update moves `queued` (or `extracting` with an expired lease) to
-  `extracting`, sets `active_run_id`, a 30 s lease and `attempts + 1`. No row updated means do
+  `extracting`, sets `active_run_id`, a lease and `attempts + 1`. No row updated means do
   nothing, so duplicate jobs are harmless.
-- **Lease:** renewed every 10 s on its own timer, so a slow LLM call cannot lose it.
-- **Finish:** one transaction, guarded by `active_run_id` and `status = 'extracting'`. A stale run
+- **Lease:** 30 s, renewed every 10 s on its own timer. **Finish:** one transaction, guarded by `active_run_id` and `status = 'extracting'`. A stale run
   writes nothing. Values are written only here, from the merged result, and
   `unique(version_id, field)` is the backstop.
 - **SIGTERM:** the worker hands its versions back (`extracting -> queued`, no attempt spent) so the
@@ -21,7 +20,7 @@ stuck in `extracting`, and a re-run must never produce duplicate or interleaved 
 
 ## Alternatives
 
-- Heartbeat rows per worker. Rejected: `active_run_id` plus the lease needs no worker identity.
+- Heartbeat rows per worker. Rejected: the lease is enough.
 - BullMQ retries and stalled-job handling. Rejected: two places deciding failure; BullMQ uses
   `attempts: 1` and Postgres decides.
 
@@ -29,4 +28,3 @@ stuck in `extracting`, and a re-run must never produce duplicate or interleaved 
 
 - After a SIGKILL a document resumes in about 40 s (lease plus reconciler tick).
 - Chunk results saved before a crash are reused, so a resumed run redoes only missing chunks.
-- Every restart-safety rule lives in a few guarded updates that are integration-tested.

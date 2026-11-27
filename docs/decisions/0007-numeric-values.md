@@ -24,4 +24,4 @@ numbers in one value, or none, still fails. Prompt v2 also asks the model for th
 - Accepted weakness: unit words in the value are not checked. `24 years` would pass if the quote
   contains `24`. The number must still appear in the quote, so an invented number cannot pass.
 - A reviewer sees the value and its quote side by side and can correct a wrong unit.
-- After this change the live Gemini check is expected to be 16/16, including `term_months`.
+- The recorded live Gemini check after this change was 16/16, including `term_months` = 24.

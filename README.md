@@ -160,11 +160,10 @@ fixtures/      Sample PDFs and manifests from the assignment.
 
 ```sh
 EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 docker compose up -d   # build services one at a time first
-bash scripts/verify-phase1.sh        # PASS/FAIL per check, non-zero exit on failure
-docker compose up -d worker          # back to your normal extractor settings
+bash scripts/verify-phase1.sh        # PASS/FAIL per check, non-zero exit on failure; restores the worker itself
 ```
 
-The script needs bash (Git Bash on Windows), `curl` and `docker compose`, and the worker running with the fake extractor (it fails fast otherwise). It checks: the three seeded documents extract; a worker restart mid-extraction; a double upload (200, same id, one row); `FLUSHALL` plus restart of worker and api; `SIGKILL` of the worker (lease recovery); no duplicate values per version.
+The script needs bash (Git Bash on Windows), `curl`, `node` and `docker compose`, and the worker running with the fake extractor (it fails fast otherwise). It checks: the three seeded documents extract; a worker restart mid-extraction; a double upload (200, same id, one row); `FLUSHALL` plus restart of worker and api; `SIGKILL` of the worker (lease recovery); no duplicate values per version. When it ends (pass or fail) it restores the worker to your normal settings (`env -u EXTRACTOR -u FAKE_EXTRACTOR_DELAY_MS docker compose up -d worker`, i.e. from `.env` and compose defaults); a failure of that step does not change the exit code.
 
 ### Live extraction check
 
