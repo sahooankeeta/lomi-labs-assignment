@@ -22,6 +22,6 @@ export async function parsePdf(
   } finally {
     // unpdf destroys only documents it created itself; this one is ours, and without
     // destroying it each parsed version would leak its pdf.js document for the worker's life.
-    await doc.destroy();
+    await doc.loadingTask.destroy();
   }
 }
