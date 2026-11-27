@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "smoke:claude": "tsx --env-file-if-exists=../../.env scripts/smoke-claude.ts",
     "test": "vitest run --exclude \"**/*.int.test.ts\" --passWithNoTests"
   },
   "devDependencies": {

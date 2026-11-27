@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`. Next: API routes, extractors, the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
+> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`, the worker's LLM boundary (concurrency limiter; Claude, fake and missing-key extractors). Next: API routes, the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
 
 PDFs go in, Claude extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -33,11 +33,22 @@ pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
 ```sh
 pnpm -r run build && pnpm -r run typecheck && pnpm -r run lint && pnpm -r run test
 pnpm --filter @lomi/db test:integration   # needs Postgres; uses TEST_DATABASE_URL
+pnpm --filter @lomi/worker smoke:claude   # live Claude call on the invoice fixture; needs ANTHROPIC_API_KEY, costs a few cents
 ```
 
 (`pnpm turbo …` does the same where Windows Application Control doesn't block the turbo binary.)
 
 Unit tests (`*.test.ts`) need nothing running. Integration tests (`*.int.test.ts`) read `TEST_DATABASE_URL` from `.env`, create that database if it's missing, apply migrations, and truncate tables between tests; they never touch the dev database.
+
+### Extractor settings (worker)
+
+| Variable                  | Default             | Effect                                                                                           |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY`       | none                | Without it the worker still starts, but every version fails with `ANTHROPIC_API_KEY is not set`. |
+| `ANTHROPIC_MODEL`         | `claude-sonnet-5-5` | Model used for extraction and token counting.                                                    |
+| `LLM_MAX_INFLIGHT`        | `4`                 | Max concurrent Claude calls (token counts and extractions share the cap).                        |
+| `EXTRACTOR=fake`          | unset               | Deterministic offline extractor for tests/e2e; ignores the API key.                              |
+| `FAKE_EXTRACTOR_DELAY_MS` | `0`                 | Simulated latency per fake extraction.                                                           |
 
 ## Layout
 
