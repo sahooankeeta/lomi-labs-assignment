@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { apiGet, apiPost } from '../api';
+import { EvidencePanel } from '../components/EvidencePanel';
 import { StatusPill } from '../components/StatusPill';
 import { ValueCard } from '../components/ValueCard';
 import { progressLabel } from '../lib/format';
@@ -110,8 +111,12 @@ export function DocumentDetail() {
             )}
           </Stack>
         </Grid.Col>
-        {/* Right column is left empty on purpose: Task 6 adds the evidence panel here. */}
-        <Grid.Col span={6} />
+        <Grid.Col span={6}>
+          <EvidencePanel
+            version={d.version}
+            selected={d.values.find((v) => v.id === selected) ?? null}
+          />
+        </Grid.Col>
       </Grid>
     </Stack>
   );
