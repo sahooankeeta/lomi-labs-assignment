@@ -65,7 +65,7 @@ services:
     env_file:
       - path: .env
         required: false
-    # API keys (GEMINI_API_KEY) comes only from .env above. Empty means: use the code's default.
+    # The API key (GEMINI_API_KEY) comes only from .env above. Empty means: use the code's default.
     environment:
       <<: *node-env
       EXTRACTOR: ${EXTRACTOR:-}
