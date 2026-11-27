@@ -7,9 +7,18 @@ import type {
 } from '@lomi/shared';
 import type { Db } from './client.js';
 
+/**
+ * Document lifecycle reads and writes used by the api and the seed script.
+ *
+ * Postgres is the source of truth: these functions only change rows. Enqueuing the
+ * BullMQ hint is the caller's job, *after* the transaction commits, and a lost hint is
+ * repaired by the worker's reconciler, so no function here talks to Redis.
+ */
+
 export interface CreateDocumentInput {
   type: DocumentType;
   title: string;
+  /** Content-addressed file key (`<sha256>.pdf`); the file is stored before this call. */
   fileKey: string;
   sha256: string;
 }
@@ -17,14 +26,20 @@ export interface CreateDocumentInput {
 export interface CreateDocumentResult {
   documentId: string;
   versionId: string;
+  /** The version's attempt count; part of the BullMQ job id (`extract:<versionId>:<attempts>`). */
   attempts: number;
+  /** `false` when an identical upload already existed and its ids were returned instead. */
   created: boolean;
 }
 
 /**
  * Creates a document with a queued v1, or returns the existing one when a document of
- * the same type already has a v1 with this sha256. The advisory lock serialises
- * concurrent identical uploads so only one row is ever created.
+ * the same type already has a v1 with this sha256 (re-uploading a file is idempotent;
+ * the same file under a different type is a different document).
+ *
+ * The advisory lock is the first statement of the transaction and is released at
+ * commit, so two identical uploads at the same instant (a double-click) run one after
+ * the other: the second sees the first's committed row and returns `created: false`.
  */
 export async function createDocumentWithV1(
   db: Db,
@@ -47,6 +62,8 @@ export async function createDocumentWithV1(
       };
     }
 
+    // Document and version reference each other, so: create both, then point the
+    // document at its current version.
     const document = await tx.document.create({ data: { type: input.type, title: input.title } });
     const version = await tx.documentVersion.create({
       data: { documentId: document.id, versionNo: 1, fileKey: input.fileKey, sha256: input.sha256 },
@@ -59,6 +76,16 @@ export async function createDocumentWithV1(
   });
 }
 
+/**
+ * The read model behind `GET /documents/:id`: one version (the current one, or
+ * `versionNo` when given) with its extracted values and their review state.
+ *
+ * - Returns `null` when the document or the requested version doesn't exist.
+ * - `status` is the shown version's own status, so an old version reads `superseded`.
+ * - Values are listed in the type's field order from `expected-fields.json`; a stored
+ *   value for a field no longer defined for the type is left out.
+ * - Before extraction finishes `values` is empty: values are written once, at finish.
+ */
 export async function getDocumentDetail(
   db: Db,
   documentId: string,
@@ -77,6 +104,7 @@ export async function getDocumentDetail(
         });
   if (!version) return null;
 
+  // Reviews are append-only; the newest row is the value's current review.
   const rows = await db.extractedValue.findMany({
     where: { versionId: version.id },
     include: { reviews: { orderBy: { createdAt: 'desc' }, take: 1 } },
@@ -88,6 +116,8 @@ export async function getDocumentDetail(
     const row = rows.find((r) => r.field === def.field);
     if (!row) continue;
     const review = row.reviews[0] ?? null;
+    // Precedence: a review on this version wins over one carried over from the
+    // previous version; with neither, the value still needs a human.
     const reviewState: ValueReviewState = review
       ? review.action === 'approve'
         ? 'approved'
@@ -140,7 +170,14 @@ export type RetryResult =
   | { kind: 'not_found' }
   | { kind: 'not_failed'; status: string };
 
-/** Requeues the current version of a document, only if it is `failed`. */
+/**
+ * Backs `POST /documents/:id/retry`: puts the current version back to `queued` with a
+ * fresh attempt budget, only if it is `failed`.
+ *
+ * The status check is part of the UPDATE (`where status = 'failed'`), so two retries at
+ * once produce one `retried` and one `not_failed`, never a double reset. The caller
+ * enqueues the job (`extract:<versionId>:0`) after this returns `retried`.
+ */
 export async function retryCurrentVersion(db: Db, documentId: string): Promise<RetryResult> {
   const document = await db.document.findUnique({
     where: { id: documentId },
@@ -154,6 +191,8 @@ export async function retryCurrentVersion(db: Db, documentId: string): Promise<R
     data: { status: 'queued', error: null, attempts: 0, activeRunId: null, leaseExpiresAt: null },
   });
   if (count === 1) return { kind: 'retried', versionId, attempts: 0 };
+
+  // Nothing updated: report the status that blocked it (the api answers 409).
 
   const current = await db.documentVersion.findUnique({
     where: { id: versionId },

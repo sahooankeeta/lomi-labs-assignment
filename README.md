@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: skeleton.** Monorepo, tooling, Prisma schema, and infra are in place. Extraction, review routes, and carry-over are next. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
+> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge) and the document read/write layer in `db`. Next: worker coordination, API routes, extractors, the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
 
 PDFs go in, Claude extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -18,7 +18,9 @@ Compose starts Postgres and Redis, runs migrations, seeds version 1 of each fixt
 
 ### Without Docker (local dev)
 
-You need Postgres 16 and Redis 7 running locally (or point `DATABASE_URL` / `REDIS_URL` in `.env` at hosted ones).
+You need Postgres (16+; a native Windows Postgres 19 service works) and Redis 7 running locally, or point `DATABASE_URL` / `REDIS_URL` in `.env` at hosted ones. Any role that can create databases works (e.g. `postgresql://postgres:<password>@localhost:5432/lomi`); create the `lomi` database once with `CREATE DATABASE lomi`.
+
+A native Postgres on port 5432 and the compose `postgres` service both want host port 5432: stop one before starting the other.
 
 ```sh
 pnpm install
@@ -29,8 +31,13 @@ pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
 ### Checks
 
 ```sh
-pnpm turbo build lint typecheck test
+pnpm -r run build && pnpm -r run typecheck && pnpm -r run lint && pnpm -r run test
+pnpm --filter @lomi/db test:integration   # needs Postgres; uses TEST_DATABASE_URL
 ```
+
+(`pnpm turbo …` does the same where Windows Application Control doesn't block the turbo binary.)
+
+Unit tests (`*.test.ts`) need nothing running. Integration tests (`*.int.test.ts`) read `TEST_DATABASE_URL` from `.env`, create that database if it's missing, apply migrations, and truncate tables between tests; they never touch the dev database.
 
 ## Layout
 
@@ -40,9 +47,13 @@ apps/
   worker/      BullMQ worker. Parses the PDF, calls Claude, validates evidence, writes values to Postgres.
   web/         Vite + React review UI (TanStack Query, React Router).
 packages/
-  db/          Prisma schema, SQL migrations (incl. hand-written CHECKs), seed script.
+  db/          Prisma schema, SQL migrations (incl. hand-written CHECKs), seed script,
+               document create/read/retry (documents.ts), test DB harness (@lomi/db/testing).
+  files/       Content-addressed file store: files saved as <sha256>.pdf, written atomically.
   shared/      Zod schemas and types shared by API, worker, and UI (statuses, field defs).
-  extraction/  Pure logic (evidence validation, later prompt building and carry-over matching). No I/O.
+  extraction/  Pure logic, no I/O: quote matching (text.ts), per-type value comparison (values.ts),
+               page offsets (pages.ts), token-counted chunk planner (chunker.ts), prompt (prompt.ts),
+               per-chunk validation (validate.ts), merge across chunks (merge.ts).
   queue/       BullMQ queue name, Redis connection, and job payload contract.
   config/      Shared tsconfig and ESLint flat config.
 fixtures/      Sample PDFs and manifests from the assignment.
