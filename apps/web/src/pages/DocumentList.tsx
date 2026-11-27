@@ -1,7 +1,6 @@
 import {
   Alert,
   Anchor,
-  Badge,
   Button,
   FileInput,
   Group,
@@ -13,26 +12,14 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import {
-  DocumentType,
-  type DocumentListItemDto,
-  type DocumentSummaryDto,
-  type VersionStatus,
-} from '@lomi/shared';
+import { DocumentType, type DocumentListItemDto, type DocumentSummaryDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ApiRequestError, apiGet, apiUpload } from '../api';
+import { StatusPill } from '../components/StatusPill';
 import { progressLabel } from '../lib/format';
 import { pollInterval } from '../lib/poll';
-
-const STATUS_COLOR: Record<VersionStatus, string> = {
-  queued: 'gray',
-  extracting: 'blue',
-  extracted: 'green',
-  failed: 'red',
-  superseded: 'yellow',
-};
 
 /** Upload form: picks a type, optional title and a PDF, then opens the created document. */
 function UploadForm() {
@@ -155,7 +142,7 @@ export function DocumentList() {
                 <Table.Td>{d.type}</Table.Td>
                 <Table.Td>v{d.versionNo}</Table.Td>
                 <Table.Td>
-                  <Badge color={STATUS_COLOR[d.status]}>{d.status}</Badge>
+                  <StatusPill status={d.status} />
                 </Table.Td>
                 <Table.Td>{progressLabel(d.progress)}</Table.Td>
               </Table.Tr>
