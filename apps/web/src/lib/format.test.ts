@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiRequestError } from '../api';
-import { progressLabel, uploadErrorMessage } from './format';
+import { dropRejectionMessage, progressLabel, uploadErrorMessage } from './format';
 
 describe('progressLabel', () => {
   it('lists only non-zero parts in order', () => {
@@ -27,5 +27,14 @@ describe('uploadErrorMessage', () => {
       'file is not a PDF',
     );
     expect(uploadErrorMessage(new Error('boom'))).toBe('Upload failed');
+  });
+});
+
+describe('dropRejectionMessage', () => {
+  it('uses the server wording for a wrong type or an oversized file', () => {
+    expect(dropRejectionMessage(['file-invalid-type'])).toBe('file is not a PDF');
+    expect(dropRejectionMessage(['file-too-large'])).toBe('file is larger than 20 MB');
+    expect(dropRejectionMessage(['too-many-files'])).toBe('drop one PDF at a time');
+    expect(dropRejectionMessage([])).toBe('file was rejected');
   });
 });

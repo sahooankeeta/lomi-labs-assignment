@@ -1,10 +1,11 @@
-import { Alert, Button, FileInput, Group, Select, Stack } from '@mantine/core';
+import { Alert, Button, Group, Select, Stack } from '@mantine/core';
 import type { DocumentSummaryDto, VersionSummaryDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { apiGet, apiUpload } from '../api';
 import { uploadErrorMessage } from '../lib/format';
+import { PdfDrop } from './PdfDrop';
 import { pollInterval } from '../lib/poll';
 import { versionOptionsOrFallback } from '../lib/versions';
 
@@ -66,13 +67,7 @@ export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
         />
         {versionNo === currentVersionNo && (
           <>
-            <FileInput
-              label="New version"
-              placeholder="Choose a PDF"
-              accept="application/pdf"
-              value={file}
-              onChange={setFile}
-            />
+            <PdfDrop label="New version" file={file} onChange={setFile} />
             <Button
               loading={upload.isPending}
               disabled={!file}

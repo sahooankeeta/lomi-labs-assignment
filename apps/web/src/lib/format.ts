@@ -29,3 +29,14 @@ export function uploadErrorMessage(err: unknown): string {
   }
   return 'Upload failed';
 }
+
+/**
+ * Message for a file the drop zone rejected before upload, from react-dropzone's error
+ * codes. It reuses the server's wording so a dropped and a submitted bad file read the same.
+ */
+export function dropRejectionMessage(codes: string[]): string {
+  if (codes.includes('file-invalid-type')) return 'file is not a PDF';
+  if (codes.includes('file-too-large')) return 'file is larger than 20 MB';
+  if (codes.includes('too-many-files')) return 'drop one PDF at a time';
+  return 'file was rejected';
+}

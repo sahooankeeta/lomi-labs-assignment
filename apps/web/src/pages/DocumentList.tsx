@@ -2,7 +2,6 @@ import {
   Alert,
   Anchor,
   Button,
-  FileInput,
   Group,
   Loader,
   Select,
@@ -17,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { apiGet, apiUpload } from '../api';
+import { PdfDrop } from '../components/PdfDrop';
 import { StatusPill } from '../components/StatusPill';
 import { progressLabel, uploadErrorMessage } from '../lib/format';
 import { pollInterval } from '../lib/poll';
@@ -68,14 +68,7 @@ function UploadForm() {
             value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
           />
-          <FileInput
-            label="PDF"
-            placeholder="Choose a PDF"
-            accept="application/pdf"
-            value={file}
-            onChange={setFile}
-            required
-          />
+          <PdfDrop label="PDF" file={file} onChange={setFile} />
         </Group>
         <Group>
           <Button type="submit" loading={upload.isPending} disabled={!type || !file}>

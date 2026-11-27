@@ -233,6 +233,9 @@ importers:
       '@mantine/core':
         specifier: 9.8.2
         version: 9.8.2(@mantine/hooks@9.8.2(react@19.3.1))(@types/react@19.3.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/dropzone':
+        specifier: 9.8.2
+        version: 9.8.2(@mantine/core@9.8.2(@mantine/hooks@9.8.2(react@19.3.1))(@types/react@19.3.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.8.2(react@19.3.1))(@types/react@19.3.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@mantine/hooks':
         specifier: 9.8.2
         version: 9.8.2(react@19.3.1)
@@ -804,6 +807,15 @@ packages:
   '@mantine/core@9.8.2':
     resolution: {integrity: sha512-PEBlIr5A80Indc8mIp+JcMzmmtv2YioubzXsLossk4cDhgm3YX2DBFQi/hQknmOaU6wt9h8l4T8s4gh6WPM21Q==}
     peerDependencies:
+      '@mantine/hooks': 9.8.2
+      react: ^19.2.0
+      react-dom: ^19.2.0
+
+  '@mantine/dropzone@9.8.2':
+    resolution: {integrity: sha512-ihVp0aJP3fSyP6cWFrwGcAjgN7hZy0nEstALP96s4RPKkEF0sLUdDjJdjESDTU/fI1H6kuO/1qYAjjnPd49thg==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@mantine/core': 9.8.2
       '@mantine/hooks': 9.8.2
       react: ^19.2.0
       react-dom: ^19.2.0
@@ -1462,6 +1474,10 @@ packages:
     resolution: {integrity: sha512-kNOjDqAh7px0XWNI+4QbzoiR/nTkHAWNud2uvnJquD1/x5a7EQZMJT0AczqK0Qn67oY/TTQ1LbUKajZpp3I9tQ==}
     engines: {node: '>=8.0.0'}
 
+  attr-accept@4.0.1:
+    resolution: {integrity: sha512-rOKAGOwbnTUvwTL8rNA0hWnU3uX9tOI20di4KjR5I1ez/RJmnA37W3zz4EMxGC2YnI289yPjRy63CdAZeQFZ4Q==}
+    engines: {node: '>= 22'}
+
   avvio@9.3.1:
     resolution: {integrity: sha512-QyTKW61/qlba+cUQBm/sT9X8lri4UdomqSDwCnrnj1IvLVDRRiXRkz4CgBRWB+/cmfC7SK5WQc8T1vSdGvaUcQ==}
 
@@ -1849,6 +1865,10 @@ packages:
 
   file-entry-cache@11.1.5:
     resolution: {integrity: sha512-+PFTHITI08JIGhnNpGNI8T8inUpgZfk3GNEqfT9R2zZV2iFXg3CvqzSl/uEhs7TSGujYRELEANyDvS8Fj7+S7Q==}
+
+  file-selector@5.0.3:
+    resolution: {integrity: sha512-d15nlW+KKq82TlItRvCHtJ8NXCX0nwz2SEUR1MOT8W50c5q2se551ZFdhITFrWohl/5wbRPfMMF9jq4Oj1xRGQ==}
+    engines: {node: '>= 22'}
 
   find-my-way@9.10.2:
     resolution: {integrity: sha512-gbLMuTm2FV5QiRh/eM0uhL4nyOvbSqqa2K3mASAtkIqxvY8ZmoLOCLMd2syLWT/SyhrvOR7GPxOKj/kcV6o8bg==}
@@ -2406,6 +2426,16 @@ packages:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
     peerDependencies:
       react: ^19.3.1
+
+  react-dropzone@20.1.4:
+    resolution: {integrity: sha512-LyjT9iQySNkJGC6yL+XTlmfTRxHhPx0eSoTh+WlR0Ge+W35rLcRH/oH7w5bzijfPHeCFcLnO9G7i+hX+LINAAA==}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      '@types/react': '*'
+      react: '>= 18'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   react-number-format@5.4.5:
     resolution: {integrity: sha512-y8O2yHHj3w0aE9XO8d2BCcUOOdQTRSVq+WIuMlLVucAm5XNjJAy+BoOJiuQMldVYVOKTMyvVNfnbl2Oqp+YxGw==}
@@ -3216,6 +3246,16 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
+  '@mantine/dropzone@9.8.2(@mantine/core@9.8.2(@mantine/hooks@9.8.2(react@19.3.1))(@types/react@19.3.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@mantine/hooks@9.8.2(react@19.3.1))(@types/react@19.3.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@mantine/core': 9.8.2(@mantine/hooks@9.8.2(react@19.3.1))(@types/react@19.3.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@mantine/hooks': 9.8.2(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+      react-dropzone: 20.1.4(@types/react@19.3.2)(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
   '@mantine/hooks@9.8.2(react@19.3.1)':
     dependencies:
       react: 19.3.1
@@ -3845,6 +3885,8 @@ snapshots:
 
   atomic-sleep@1.0.0: {}
 
+  attr-accept@4.0.1: {}
+
   avvio@9.3.1:
     dependencies:
       '@fastify/error': 4.3.0
@@ -4251,6 +4293,8 @@ snapshots:
   file-entry-cache@11.1.5:
     dependencies:
       flat-cache: 6.1.23
+
+  file-selector@5.0.3: {}
 
   find-my-way@9.10.2:
     dependencies:
@@ -4778,6 +4822,14 @@ snapshots:
     dependencies:
       react: 19.3.1
       scheduler: 0.28.0
+
+  react-dropzone@20.1.4(@types/react@19.3.2)(react@19.3.1):
+    dependencies:
+      attr-accept: 4.0.1
+      file-selector: 5.0.3
+      react: 19.3.1
+    optionalDependencies:
+      '@types/react': 19.3.2
 
   react-number-format@5.4.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
