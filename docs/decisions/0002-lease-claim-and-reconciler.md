@@ -8,14 +8,14 @@ stuck in `extracting`, and a re-run must never produce duplicate or interleaved 
 ## Decision
 
 - **Claim:** one conditional update moves `queued` (or `extracting` with an expired lease) to
-  `extracting`, sets `active_run_id`, a lease and `attempts + 1`. No row updated means do
-  nothing, so duplicate jobs are harmless.
-- **Lease:** 30 s, renewed every 10 s on its own timer. **Finish:** one transaction, guarded by `active_run_id` and `status = 'extracting'`. A stale run
-  writes nothing. Values are written only here, from the merged result, and
-  `unique(version_id, field)` is the backstop.
-- **SIGTERM:** the worker hands its versions back (`extracting -> queued`, no attempt spent) so the
-  next worker resumes at once. SIGKILL falls back to lease expiry.
-- **Attempt cap:** a claim that would start attempt 4 fails the version visibly instead of looping.
+  `extracting`, sets `active_run_id`, a lease and `attempts + 1`. No row updated: do nothing.
+- **Lease:** 30 s, renewed every 10 s on its own timer. **Finish:** one transaction, guarded by
+  `active_run_id` and `status = 'extracting'`; a stale run writes nothing. Values are written only
+  here, from the merged result, and `unique(version_id, field)` is the backstop.
+- **SIGTERM:** the worker hands its versions back (`extracting -> queued`, no attempt spent). It is
+  resumed by the next reconciler pass (at most 10 s) or the restarted worker's startup pass; no job
+  is enqueued at handoff. SIGKILL falls back to lease expiry.
+- **Attempt cap:** attempt 4 fails the version visibly instead of looping.
 - **Reconciler:** every 10 s, re-enqueues `queued` and expired-lease versions.
 
 ## Alternatives

@@ -55,6 +55,7 @@ const reconciler = startReconciler({
   enqueue: (versionId, attempts) => enqueueExtraction(queue, versionId, attempts),
   log,
   intervalMs: RECONCILE_MS,
+  isReady: () => redis.status === 'ready',
 });
 
 worker.on('ready', () =>

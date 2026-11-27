@@ -99,13 +99,13 @@ claim (lease) -> parse the PDF once and store the text -> plan chunks -> extract
 (3 at a time) -> merge -> finish. Every write is guarded by the run id, so a run that lost its lease
 writes nothing. The lease is renewed on its own timer, so a slow LLM call cannot lose it.
 
-| Event                   | What happens                                                                                                                 |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Worker killed / restart | Lease expires (30 s); the reconciler (every 10 s) re-enqueues; the next run reuses stored text and chunk results.            |
-| SIGTERM                 | In-flight runs stop, the version goes back to `queued` without spending an attempt, and the next worker resumes it.          |
-| Redis `FLUSHALL`        | Jobs vanish; the reconciler re-adds every `queued` or expired version from Postgres within 10 s.                             |
-| Missing key             | Version `failed` with `ANTHROPIC_API_KEY is not set` (or the Gemini equivalent); `POST /documents/:id/retry` once it is set. |
-| Scanned PDF / too long  | Version `failed` with a clear message (`No text layer found...`, `Document too long (N chunks; limit 50)`).                  |
+| Event                   | What happens                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Worker killed / restart | Lease expires (30 s); the reconciler (every 10 s) re-enqueues; the next run reuses stored text and chunk results.                     |
+| SIGTERM                 | In-flight runs stop, the version goes back to `queued` without spending an attempt, and the next reconciler pass (≤ 10 s) resumes it. |
+| Redis `FLUSHALL`        | Jobs vanish; the reconciler re-adds every `queued` or expired version from Postgres within 10 s.                                      |
+| Missing key             | Version `failed` with `ANTHROPIC_API_KEY is not set` (or the Gemini equivalent); `POST /documents/:id/retry` once it is set.          |
+| Scanned PDF / too long  | Version `failed` with a clear message (`No text layer found...`, `Document too long (N chunks; limit 50)`).                           |
 
 Env: `EXTRACTOR` (`claude` default, `gemini`, `fake`), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `GEMINI_API_KEY` / `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `LLM_MAX_INFLIGHT`, `CHUNK_CONCURRENCY` (default 3), `UPLOAD_DIR`, `FIXTURES_DIR`, `REDIS_URL`, `DATABASE_URL`.
 

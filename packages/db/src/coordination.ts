@@ -181,11 +181,10 @@ export async function failVersion(
  * Graceful shutdown (SIGTERM): returns the version to `queued` so another worker can
  * take it immediately, and marks the run `abandoned`. `attempts` is decremented so a
  * planned handoff doesn't use up the version's attempt budget. Returns `false` and
- * changes nothing for a stale run. The caller enqueues a new job
- * (`extract-<versionId>-<attempts>`) after `true`. Because `attempts` went back down, that
- * id can equal the job this worker is still running, and BullMQ drops an add whose id is
- * still active. That is fine: once the running job finishes and is removed, the reconciler
- * re-adds it within seconds, and a double delivery is harmless since `claimVersion`
+ * changes nothing for a stale run. Nobody enqueues a job after `true`:
+ * the version resumes on the next reconciler pass (within its 10 s interval) or on the
+ * restarted worker's immediate startup pass, which re-adds it as
+ * `extract-<versionId>-<attempts>`. A double delivery is harmless since `claimVersion`
  * returns `skipped` for a live lease.
  */
 export async function handOffVersion(db: Db, versionId: string, runId: string): Promise<boolean> {

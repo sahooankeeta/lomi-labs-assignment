@@ -141,6 +141,7 @@ export async function processVersion(
     let pageOffsets = version.pageOffsets;
     if (text === null) {
       const parsed = await parsePdf(await files.read(version.fileKey));
+      checkpoint();
       if (parsed.text.replace(/\s/g, '').length < MIN_TEXT_CHARS) throw new Error(NO_TEXT);
       text = parsed.text;
       pageOffsets = parsed.pageOffsets;
@@ -157,7 +158,14 @@ export async function processVersion(
       const plan = await planChunks(
         text,
         pageOffsets,
-        { count: (t) => extractor.countTokens(t) },
+        {
+          // Planning makes one API call per chunk; checking the abort before each lets
+          // SIGTERM stop a large document mid-plan inside the shutdown grace period.
+          count: (t) => {
+            checkpoint();
+            return extractor.countTokens(t);
+          },
+        },
         deps.chunkOptions,
       );
       await saveChunkPlan(db, versionId, plan);

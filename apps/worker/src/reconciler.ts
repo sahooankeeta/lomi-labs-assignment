@@ -15,8 +15,11 @@ import { errInfo, type Logger } from '@lomi/logger';
  * can wait indefinitely (the connection retries without limit), so a tick that fires
  * while a pass is still running is skipped, and a pass is abandoned after `timeoutMs`
  * (default `intervalMs`) with a warning. Adds from an abandoned pass may still complete
- * later; that is harmless for the same dedupe reasons. Without these bounds each tick
- * would pile another hung pass (and query) on top, growing memory for the whole outage.
+ * later; that is harmless for the same dedupe reasons. `isReady` goes further: while it
+ * returns false (Redis not connected) a pass does not start, so no adds are issued and none
+ * pile up in ioredis's offline queue. Adds started just before an outage
+ * are not cancelled (the timeout only stops adds that have not started), but the pass
+ * guard and `isReady` keep later ticks from adding more.
  *
  * The timer does not fire at start: call `runOnce()` yourself for an immediate pass.
  * After `stop()` the timer is cancelled, no new pass starts and `runOnce()` returns 0.
@@ -28,6 +31,8 @@ export function startReconciler(deps: {
   intervalMs?: number;
   /** Longest a pass may run before it is abandoned (default: `intervalMs`). */
   timeoutMs?: number;
+  /** Returns false while the queue's connection is down; the pass is then skipped (default: always ready). */
+  isReady?: () => boolean;
 }): { stop(): void; runOnce(): Promise<number> } {
   const { db, enqueue, log } = deps;
   const intervalMs = deps.intervalMs ?? 10_000;
@@ -37,7 +42,7 @@ export function startReconciler(deps: {
 
   /**
    * One pass. Returns how many adds completed successfully. Returns 0 without doing
-   * anything if a pass is already in flight or the reconciler is stopped, and 0 (after
+   * anything if a pass is already in flight, the reconciler is stopped or `isReady` is false, and 0 (after
    * a warning) if the pass timed out; an abandoned pass starts no further adds. A
    * failing enqueue is logged and does not affect the others (the next pass retries
    * it); a failing database query rejects, which the timer logs.
@@ -46,6 +51,10 @@ export function startReconciler(deps: {
     if (stopped) return 0;
     if (running) {
       log.debug('reconciler: previous pass still running; skipping');
+      return 0;
+    }
+    if (deps.isReady && !deps.isReady()) {
+      log.debug('reconciler: queue connection not ready; skipping');
       return 0;
     }
     running = true;

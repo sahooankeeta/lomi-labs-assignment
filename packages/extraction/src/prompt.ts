@@ -1,6 +1,9 @@
 import type { DocumentType, FieldDef } from '@lomi/shared';
 
-/** Bump when the prompt text changes; stored with each chunk result. */
+/**
+ * Bump when the prompt text OR validation/normalization rules change: stored chunk results
+ * hold validated candidates and are reused on resume. Stored with each chunk result.
+ */
 export const PROMPT_VERSION = 'v2';
 
 const TYPE_LABEL: Record<DocumentType, string> = {
