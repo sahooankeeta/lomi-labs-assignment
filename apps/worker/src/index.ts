@@ -1,29 +1,60 @@
 import { Worker } from 'bullmq';
 import { createDb } from '@lomi/db';
+import { LocalFileStore } from '@lomi/files';
 import { createLogger, describeUrl, errInfo, logConnections } from '@lomi/logger';
+import { loadExpectedFields } from '@lomi/shared/node';
 import {
+  createExtractionQueue,
+  enqueueExtraction,
   EXTRACTION_QUEUE,
   isRedisConnectionError,
   redisConnection,
   type ExtractionJob,
 } from '@lomi/queue';
 
+import { createExtractor } from './extractors/index.js';
+import { processVersion, type PipelineDeps } from './pipeline.js';
+import { startReconciler } from './reconciler.js';
+
 /**
- * Skeleton worker: receives extraction jobs (no processing yet).
- * Next step: parse PDF -> call Claude -> validate evidence -> write values to PG.
+ * Worker entry: BullMQ jobs (hints carrying a versionId) run `processVersion`; the
+ * reconciler re-derives lost hints from Postgres. See README "Worker".
  */
 const CONCURRENCY = 2;
+const RECONCILE_MS = 10_000;
 const log = createLogger('worker');
 const prisma = createDb();
 const redis = redisConnection(undefined, log);
+const queue = createExtractionQueue(redis, log);
+const extractor = createExtractor(process.env);
+log.info(`extractor: ${extractor.constructor.name} (model ${extractor.model})`);
+
+// Aborted on SIGTERM/SIGINT: in-flight runs hand their version back instead of finishing.
+const shutdown = new AbortController();
+const deps: PipelineDeps = {
+  db: prisma,
+  files: new LocalFileStore(process.env.UPLOAD_DIR ?? './uploads'),
+  extractor,
+  fields: loadExpectedFields(),
+  log,
+  signal: shutdown.signal,
+};
 
 const worker = new Worker<ExtractionJob>(
   EXTRACTION_QUEUE,
-  async (_job) => {
-    // Extraction lands in phase 1.
+  // Every outcome is a normal return: Postgres holds the result, BullMQ never retries.
+  async (job) => {
+    await processVersion(deps, job.data.versionId);
   },
   { connection: redis, concurrency: CONCURRENCY },
 );
+
+const reconciler = startReconciler({
+  db: prisma,
+  enqueue: (versionId, attempts) => enqueueExtraction(queue, versionId, attempts),
+  log,
+  intervalMs: RECONCILE_MS,
+});
 
 worker.on('ready', () =>
   log.info(`worker listening on queue "${EXTRACTION_QUEUE}" (concurrency ${CONCURRENCY})`),
@@ -55,11 +86,16 @@ await logConnections(log, [
   },
 ]);
 
+// Immediate pass: a restart (or a flushed Redis) is repaired without waiting a full interval.
+reconciler.runOnce().catch((err: unknown) => log.error(errInfo(err), 'initial reconcile failed'));
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {
-    log.info({ signal }, 'shutting down: waiting for in-flight jobs');
-    // close() waits for in-flight jobs; an interrupted job is retried by BullMQ.
-    await worker.close();
+    log.info({ signal }, 'shutting down: handing in-flight versions back');
+    shutdown.abort(); // in-flight runs hand off and return
+    reconciler.stop();
+    await worker.close(); // waits for those runs to finish handing off
+    await queue.close();
     await redis.quit();
     await prisma.$disconnect();
     log.info('shutdown complete');

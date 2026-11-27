@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`, the worker's LLM boundary (concurrency limiter; Claude, Gemini, fake and missing-key extractors), the API routes (upload, read, retry). Next: the remaining routes (versions, review, progress), the worker pipeline. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
+> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`, the worker's LLM boundary (concurrency limiter; Claude, Gemini, fake and missing-key extractors), the API routes (upload, read, retry), the worker pipeline (parse, chunk, extract, merge, reconciler, SIGTERM handoff). Next: the remaining routes (versions, review, progress). Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
 
 PDFs go in, Claude extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -34,6 +34,7 @@ pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
 pnpm -r run build && pnpm -r run typecheck && pnpm -r run lint && pnpm -r run test
 pnpm --filter @lomi/db test:integration   # needs Postgres; uses TEST_DATABASE_URL
 pnpm --filter @lomi/api test:integration  # needs Postgres; run after (not alongside) the db suite, they share lomi_test
+pnpm --filter @lomi/worker test:integration # needs Postgres, no Redis, fake extractor only; run alone (shares lomi_test)
 pnpm --filter @lomi/worker smoke:claude   # live Claude call on the invoice fixture; needs ANTHROPIC_API_KEY, costs a few cents
 pnpm --filter @lomi/worker smoke:gemini   # check a Gemini key: lists models, one extraction on the invoice; needs GEMINI_API_KEY (free tier)
 ```
@@ -74,6 +75,23 @@ curl -F type=invoice -F file=@fixtures/documents/invoice-001.pdf localhost:3000/
 curl localhost:3000/documents/<uuid>
 curl -X POST localhost:3000/documents/<uuid>/retry
 ```
+
+## Worker
+
+Postgres is the truth; BullMQ jobs are only hints (`{ versionId }`). A job runs `processVersion`:
+claim (lease) -> parse the PDF once and store the text -> plan chunks -> extract each missing chunk
+(3 at a time) -> merge -> finish. Every write is guarded by the run id, so a run that lost its lease
+writes nothing. The lease is renewed on its own timer, so a slow LLM call cannot lose it.
+
+| Event                   | What happens                                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Worker killed / restart | Lease expires (30 s); the reconciler (every 10 s) re-enqueues; the next run reuses stored text and chunk results.            |
+| SIGTERM                 | In-flight runs stop, the version goes back to `queued` without spending an attempt, and the next worker resumes it.          |
+| Redis `FLUSHALL`        | Jobs vanish; the reconciler re-adds every `queued` or expired version from Postgres within 10 s.                             |
+| Missing key             | Version `failed` with `ANTHROPIC_API_KEY is not set` (or the Gemini equivalent); `POST /documents/:id/retry` once it is set. |
+| Scanned PDF / too long  | Version `failed` with a clear message (`No text layer found...`, `Document too long (N chunks; limit 50)`).                  |
+
+Env: `EXTRACTOR` (`claude` default, `gemini`, `fake`), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `GEMINI_API_KEY` / `GEMINI_MODEL`, `LLM_MAX_INFLIGHT`, `UPLOAD_DIR`, `FIXTURES_DIR`, `REDIS_URL`, `DATABASE_URL`.
 
 ## Layout
 
