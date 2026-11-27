@@ -10,6 +10,7 @@ import { HttpError } from './errors.js';
 import { documentRoutes } from './routes/documents.js';
 import { fileRoutes } from './routes/files.js';
 import { reviewRoutes } from './routes/reviews.js';
+import { versionRoutes } from './routes/versions.js';
 
 /**
  * Everything the api touches outside itself, injected so tests can fake the edges
@@ -102,6 +103,7 @@ export function buildApp(deps: Deps, log: Logger = createLogger('api')) {
   // Registered as a plugin so the routes see Fastify's default logger typing.
   app.register(async (scope) => documentRoutes(scope, deps));
   app.register(async (scope) => reviewRoutes(scope, deps));
+  app.register(async (scope) => versionRoutes(scope, deps));
   app.register(async (scope) => fileRoutes(scope, deps));
 
   return app;
