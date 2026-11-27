@@ -1,14 +1,29 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: phase 1 in progress.** Done: shared contracts, file store, test DB harness, the pure extraction logic (quote matching, value comparison, chunking, prompt, validation, merge), the document read/write layer and worker coordination (claim, lease, chunks, finish, handoff) in `db`, the worker's LLM boundary (concurrency limiter; Claude, Gemini, fake and missing-key extractors), the API routes (upload, read, retry), the worker pipeline (parse, chunk, extract, merge, reconciler, SIGTERM handoff). Next: the remaining routes (versions, review, progress). Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
+> **Status: Phase 1 complete (ingest and extraction).** Upload a PDF, get values with verbatim evidence, page and offsets, or gaps with reasons; survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Not yet built: version upload and carry-over, review and progress routes, the UI beyond the skeleton. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
-PDFs go in, Claude extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
+PDFs go in, an LLM (Claude by default; Gemini or a fake extractor optionally) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
 ## Run it
 
 ```sh
-cp .env.example .env        # add ANTHROPIC_API_KEY
+cp .env.example .env        # then set a key, see below
 docker compose up --build
+```
+
+Pick the extractor in `.env` (compose passes these to the worker):
+
+- **Gemini (free tier):** `EXTRACTOR=gemini` and `GEMINI_API_KEY=...` (key from https://aistudio.google.com/apikey).
+- **Claude (the default):** set `ANTHROPIC_API_KEY`; `EXTRACTOR` can stay unset. Without a key every version fails visibly with `ANTHROPIC_API_KEY is not set` and can be retried.
+- **Fake (offline, no key):** `EXTRACTOR=fake`, optional `FAKE_EXTRACTOR_DELAY_MS=15000`. Deterministic values from the fixtures.
+
+After changing `.env`, run `docker compose up -d worker` to recreate the worker.
+
+**Low on memory?** Build one service at a time instead of one parallel build:
+
+```sh
+for s in migrate api worker web; do docker compose build $s; done
+docker compose up -d
 ```
 
 - Web UI: http://localhost:8080
@@ -56,6 +71,7 @@ Unit tests (`*.test.ts`) need nothing running. Integration tests (`*.int.test.ts
 | `GEMINI_FALLBACK_MODELS`  | `gemini-flash-lite-latest` | Comma-separated models tried in order when the primary is busy (429/503/timeout twice) or retired (404).                                      |
 | `EXTRACTOR=fake`          | unset                      | Deterministic offline extractor for tests/e2e; ignores the API keys.                                                                          |
 | `FAKE_EXTRACTOR_DELAY_MS` | `0`                        | Simulated latency per fake extraction.                                                                                                        |
+| `CHUNK_CONCURRENCY`       | `3`                        | Chunks of one document extracted at once.                                                                                                     |
 
 `EXTRACTOR=gemini` runs on Google's free tier, which has rate limits and models that are sometimes overloaded: a busy model is retried once, then the next fallback model is used, and stored results record which model answered. Token counts are a local estimate (length / 4), so Gemini uses no quota for them. Answers go through the same evidence check as Claude's.
 
@@ -91,14 +107,14 @@ writes nothing. The lease is renewed on its own timer, so a slow LLM call cannot
 | Missing key             | Version `failed` with `ANTHROPIC_API_KEY is not set` (or the Gemini equivalent); `POST /documents/:id/retry` once it is set. |
 | Scanned PDF / too long  | Version `failed` with a clear message (`No text layer found...`, `Document too long (N chunks; limit 50)`).                  |
 
-Env: `EXTRACTOR` (`claude` default, `gemini`, `fake`), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `GEMINI_API_KEY` / `GEMINI_MODEL`, `LLM_MAX_INFLIGHT`, `UPLOAD_DIR`, `FIXTURES_DIR`, `REDIS_URL`, `DATABASE_URL`.
+Env: `EXTRACTOR` (`claude` default, `gemini`, `fake`), `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`, `GEMINI_API_KEY` / `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `LLM_MAX_INFLIGHT`, `CHUNK_CONCURRENCY` (default 3), `UPLOAD_DIR`, `FIXTURES_DIR`, `REDIS_URL`, `DATABASE_URL`.
 
 ## Layout
 
 ```
 apps/
   api/         Fastify HTTP API. Validates, writes to Postgres, enqueues jobs. Never calls the LLM.
-  worker/      BullMQ worker. Parses the PDF, calls Claude, validates evidence, writes values to Postgres.
+  worker/      BullMQ worker. Parses the PDF, calls the configured LLM (Claude, Gemini or fake), validates evidence, writes values to Postgres.
   web/         Vite + React review UI (TanStack Query, React Router).
 packages/
   db/          Prisma schema, SQL migrations (incl. hand-written CHECKs), seed script,
@@ -130,15 +146,29 @@ fixtures/      Sample PDFs and manifests from the assignment.
 
 ## Stack
 
-| Concern      | Choice                   | Why                                                                                                                                                                                                                                                  |
-| ------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTTP         | Fastify 5                | Built-in schema validation, `onClose` hooks for clean shutdown, pino logging, streaming multipart uploads                                                                                                                                            |
-| DB           | Postgres 16 + Prisma 7   | Prisma 7 (`prisma-client` generator + `pg` driver adapter). Guarded `updateMany` + count checks, interactive transactions and `createMany({ skipDuplicates })` cover the idempotency rules; one raw `SELECT … FOR UPDATE` where row locks are needed |
-| Queue        | BullMQ on Redis 7        | Coordinates work only. Postgres is the source of truth                                                                                                                                                                                               |
-| LLM          | Anthropic Claude         | Tool use with a JSON schema gives structured output                                                                                                                                                                                                  |
-| PDF text     | unpdf                    | Maintained, pure JS                                                                                                                                                                                                                                  |
-| UI           | Vite + React 19          | Plain SPA, no SSR needed                                                                                                                                                                                                                             |
-| Tests / lint | Vitest, ESLint, Prettier |                                                                                                                                                                                                                                                      |
+| Concern      | Choice                         | Why                                                                                                                                                                                                                                                  |
+| ------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP         | Fastify 5                      | Built-in schema validation, `onClose` hooks for clean shutdown, pino logging, streaming multipart uploads                                                                                                                                            |
+| DB           | Postgres 16 + Prisma 7         | Prisma 7 (`prisma-client` generator + `pg` driver adapter). Guarded `updateMany` + count checks, interactive transactions and `createMany({ skipDuplicates })` cover the idempotency rules; one raw `SELECT … FOR UPDATE` where row locks are needed |
+| Queue        | BullMQ on Redis 7              | Coordinates work only. Postgres is the source of truth                                                                                                                                                                                               |
+| LLM          | Claude (default), Gemini, fake | JSON-schema structured outputs; the same evidence check applies to all three ([0005](docs/decisions/0005-structured-outputs-and-model.md))                                                                                                           |
+| PDF text     | unpdf                          | Maintained, pure JS                                                                                                                                                                                                                                  |
+| UI           | Vite + React 19                | Plain SPA, no SSR needed                                                                                                                                                                                                                             |
+| Tests / lint | Vitest, ESLint, Prettier       |                                                                                                                                                                                                                                                      |
+
+## Verify
+
+```sh
+EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 docker compose up -d   # build services one at a time first
+bash scripts/verify-phase1.sh        # PASS/FAIL per check, non-zero exit on failure
+docker compose up -d worker          # back to your normal extractor settings
+```
+
+The script needs bash (Git Bash on Windows), `curl` and `docker compose`, and the worker running with the fake extractor (it fails fast otherwise). It checks: the three seeded documents extract; a worker restart mid-extraction; a double upload (200, same id, one row); `FLUSHALL` plus restart of worker and api; `SIGKILL` of the worker (lease recovery); no duplicate values per version.
+
+### Live extraction check
+
+Result recorded below after the first live run.
 
 ## Schema
 
@@ -150,9 +180,12 @@ Full model in `packages/db/prisma/schema.prisma`.
 - `extracted_values`: **unique (version_id, field)**, so a re-run can't duplicate values. A gap is `value = null` with a `gap_reason`, enforced by a CHECK constraint. `previous_value_id` / `carried_review_id` link to the previous version.
 - `reviews`: append-only. The latest row per value is its current review.
 
+## Decisions
+
+Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values.
+
 ## TODO (documented as they're decided)
 
-- Redis/Postgres consistency and FLUSHALL recovery
 - What happens when a new version arrives mid-extraction
 - How "unchanged evidence" is matched across versions
 - Polling vs streaming in the UI
