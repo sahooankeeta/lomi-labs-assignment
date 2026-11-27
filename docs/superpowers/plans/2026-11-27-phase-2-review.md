@@ -297,6 +297,10 @@ header, so replace any character outside `[A-Za-z0-9._-]` with `_`.
     - the state `Badge`;
     - an Approve `Button`, labelled "Confirm absent" on a gap;
     - Correct, which opens an inline form (`TextInput` value, optional `Textarea` note, Save, Cancel).
+    - Click flow (owner's MVP choice): each Approve or Save is sent immediately as one
+      `POST /values/:id/review`, with no draft step. Reviewed cards in "Done" keep both buttons, so a
+      decision can be changed later. That appends a new review, and the newest one wins. Approve on
+      a corrected card goes back to the extracted value.
   - **Mutations:** invalidate `['document', id]` and `['documents']`. A `400`/`409` message shows
     on the card. Buttons are disabled while a mutation is pending and when `!canReview`
     (`status !== 'extracted'`).
@@ -351,7 +355,10 @@ Behaviour:
   - typed validation of corrections, and its cost (a reviewer can't type free text into a money field);
   - progress counting each value once, with `gaps` overlapping.
 - [ ] **Step 2:** Update the README: mark Phase 2 done, describe the list and detail screens, and
-  link 0008.
+  link 0008. Add to its TODO section: "Draft → submit review flow. Decisions held as drafts in
+  localStorage per version, a sticky submit bar, a before/after summary, and an all-or-nothing
+  `POST /documents/:id/reviews`. Deferred: the MVP saves each click." Note 0008 also records
+  the click-flow choice and this alternative.
 - [ ] **Step 3:** Host checks: `pnpm -r run build`, `pnpm -r run lint`, `pnpm -r run typecheck`,
   `pnpm -r run test` → all exit 0. Then run `pnpm --filter @lomi/db test:integration` and
   `pnpm --filter @lomi/api test:integration` one after the other → PASS.
