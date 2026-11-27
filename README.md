@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: Phase 2 complete (review UI and routes).** Phase 1 (ingest and extraction) survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Phase 2 adds review routes (approve, correct, confirm absent), progress, and a React UI with the PDF beside the values. Verified in a browser on the dev servers (`pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, UI on :5173); the compose web image now serves the pdf.js worker with the right MIME type, but the worker and migrate images have not been rebuilt with Phase 2 yet (see "Review UI"). Not yet built: version upload and carry-over. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
+> **Status: Phase 3 complete (document versions and review carry-over).** Phase 1 (ingest and extraction) survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Phase 2 added review routes (approve, correct, confirm absent), progress, and a React UI with the PDF beside the values. Phase 3 adds new versions, carry-over of reviews to unchanged values, and a read-only history. Phases 2 and 3 were verified in a browser on the dev servers (`pnpm --filter @lomi/api dev`, `pnpm --filter @lomi/web dev`, UI on :5173; Phase 3 with the fake extractor). The compose images were not rebuilt for Phase 3. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
 PDFs go in, an LLM (Google Gemini; a fake extractor for tests) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -113,6 +113,40 @@ For the compose stack (http://localhost:8080), rebuild the images one service at
 
 The UI uses Mantine; the review model and that choice are in [0008](docs/decisions/0008-reviews.md).
 
+## Versions and carry-over
+
+Code: `isUnchanged` (`packages/extraction/src/carry.ts`), `carryLinks` inside `finishVersion` (`packages/db/src/coordination.ts`), `createVersion` / `listVersions` (`packages/db/src/versions.ts`).
+
+**What "unchanged" means.** "v1" is the latest `extracted` version older than the new one.
+
+- "Same value" means equal after per-type normalization: money, numbers and percents compare by digits (`$5,230.29` = `5230.29`); dates compare by parsed date (`2025-09-14` = `September 14, 2025`); strings compare case-insensitively.
+- "Quote found" means v1's quote appears anywhere in v2's text after both sides are normalized the same way: Unicode NFKC, curly quotes and dashes to ASCII, whitespace runs collapsed. Positions and pages are never compared, so a quote that moved to another line or page (the whole text shifted) still counts as found.
+
+**What gets carried.**
+
+| # | Previous (v1) | New (v2) | v2 state | Card label |
+|---|---|---|---|---|
+| 1 | Value, approved | Same value, v1's quote found in v2's text | `carried_over` (v1's approval) | carried over from v1 (approved) |
+| 2 | Value, corrected | Same value, quote found | `carried_over`; effective value = the correction | carried over from v1 (corrected) |
+| 3 | Value carried over from an earlier version, no review of its own (e.g. v1 approved → v2 carried → now v3) | Same value, quote found | `carried_over` (the original review, passed along the chain) | carried over from v2 (approved) |
+| 4 | Value, never reviewed | Same value, quote found | `pending` (nothing to carry) | unchanged from v1 (not reviewed there) |
+| 5 | Value (any review) | Different value | `pending` | was $5,230.29 in v1 (approved / corrected / not reviewed) |
+| 6 | Value (any review) | Same value, v1's quote **not** in v2's text | `pending` | same value as v1 (approved / corrected / not reviewed), but its quote changed |
+| 7 | Value (any review) | Gap | `pending` | was $5,230.29 in v1 (approved / corrected / not reviewed) |
+| 8 | Gap (any review) | Value | `pending` | was a gap in v1 (confirmed absent / corrected / not reviewed) |
+| 9 | Gap, confirmed absent | Gap | `pending`: **gaps never carry** | also a gap in v1 (confirmed absent) |
+| 10 | Gap, corrected (value supplied) | Gap | `pending` | also a gap in v1, corrected to 52000 |
+| 11 | Gap, never reviewed | Gap | `pending` | also a gap in v1 (not reviewed) |
+| 12 | No extracted older version (v1 superseded or failed) | Anything | `pending`, no previous link | none |
+
+**Why.**
+
+- A quote that still appears in the new text is the only evidence that the reviewed passage did not change. Comparing the old quote with the new text, not offsets, is what survives shifted text.
+- Gaps never carry: a gap has no quote, so "still absent" cannot be verified, and the model may have missed a value that v2 now states.
+- The baseline is the latest extracted older version, because superseded and failed versions have no values to compare.
+
+Uploading a new version supersedes any older version that is still queued or extracting. Details in [0009](docs/decisions/0009-versions-and-carry-over.md).
+
 ## Worker
 
 Postgres is the truth; BullMQ jobs are only hints (`{ versionId }`). A job runs `processVersion`:
@@ -212,13 +246,11 @@ Full model in `packages/db/prisma/schema.prisma`.
 
 ## Decisions
 
-Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values, reviews ([0008](docs/decisions/0008-reviews.md)).
+Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values, reviews ([0008](docs/decisions/0008-reviews.md)), versions and carry-over ([0009](docs/decisions/0009-versions-and-carry-over.md)).
 
 ## TODO (documented as they're decided)
 
 - Delete a document (deferred). The plan is a hard delete of the document and all its versions in one locked transaction, keeping PDFs another document still uses. The worker would check before each chunk that its run still owns the version, so a delete stops LLM calls at the next chunk; in-flight calls are cut by the next lease renewal.
 - Draft → submit review flow. Decisions held as drafts in localStorage per version, a sticky submit bar, a before/after summary, and an all-or-nothing `POST /documents/:id/reviews`. Deferred: the MVP saves each click.
-- What happens when a new version arrives mid-extraction
-- How "unchanged evidence" is matched across versions
 - Polling vs streaming in the UI
 - What was cut, and what changes at 10k documents
