@@ -27,6 +27,8 @@ export function createLogger(service: string, overrides: LoggerOptions = {}): Lo
         'headers["x-api-key"]',
         'req.headers.authorization',
         'req.headers["x-api-key"]',
+        'GEMINI_API_KEY',
+        '*.GEMINI_API_KEY',
         'ANTHROPIC_API_KEY',
         '*.ANTHROPIC_API_KEY',
       ],

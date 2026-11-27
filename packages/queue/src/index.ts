@@ -42,15 +42,21 @@ export function redisConnection(url = process.env.REDIS_URL, log?: Logger): Redi
 export const isRedisConnectionError = (err: Error) =>
   /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|Connection is closed/.test(err.message);
 
+export const extractionJobOptions = {
+  // Retries belong to the reconciler (it re-enqueues with a new attempt number), not BullMQ.
+  attempts: 1,
+  // Finished jobs are dropped at once. BullMQ ignores an add whose job id still exists, and job
+  // ids are reused (handoff and retry both reset attempts, so `extract-<id>-0` comes back), so a
+  // retained finished job would strand the version in `queued`. Dedupe must only cover
+  // waiting/active jobs. History lives in Postgres `extraction_runs`.
+  removeOnComplete: true,
+  removeOnFail: true,
+} as const;
+
 export function createExtractionQueue(connection: Redis, log?: Logger) {
   const queue = new Queue<ExtractionJob>(EXTRACTION_QUEUE, {
     connection,
-    defaultJobOptions: {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2_000 },
-      removeOnComplete: 1_000,
-      removeOnFail: 1_000,
-    },
+    defaultJobOptions: extractionJobOptions,
   });
   // Without a listener BullMQ prints raw stack traces for every reconnect attempt.
   queue.on('error', (err) => {
@@ -59,5 +65,21 @@ export function createExtractionQueue(connection: Redis, log?: Logger) {
   return queue;
 }
 
-/** One job per version: re-adding the same version is a no-op while it's queued. */
-export const extractionJobId = (versionId: string) => `extract:${versionId}`;
+/**
+ * One job per version attempt: re-adding the same attempt is a no-op while the job is waiting or active.
+ * No `:` in the id: BullMQ only accepts one through a legacy 3-part exemption slated for removal.
+ */
+export const extractionJobId = (versionId: string, attempts: number) =>
+  `extract-${versionId}-${attempts}`;
+
+/**
+ * Adds the job for one version attempt. Rejects on add failure (e.g. Redis unreachable):
+ * callers log and rely on the reconciler, which re-enqueues any unfinished version from Postgres.
+ */
+export async function enqueueExtraction(
+  queue: Queue<ExtractionJob>,
+  versionId: string,
+  attempts: number,
+): Promise<void> {
+  await queue.add('extract', { versionId }, { jobId: extractionJobId(versionId, attempts) });
+}

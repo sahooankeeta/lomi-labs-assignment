@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createLogger } from '@lomi/logger';
 import { FixtureManifest } from '@lomi/shared';
 import { createDb } from './client.js';
+import { createDocumentWithV1 } from './documents.js';
 
 /**
  * Seeds version 1 of each fixture document. Safe to run on every boot: a document
@@ -37,25 +38,16 @@ try {
     // File first, then the row: a crash in between leaves a harmless orphan file.
     await copyFile(src, path.join(uploadDir, fileKey));
 
-    const existing = await prisma.documentVersion.findFirst({
-      where: { versionNo: 1, sha256, document: { type: doc.type } },
-      select: { id: true },
+    const result = await createDocumentWithV1(prisma, {
+      type: doc.type,
+      title: doc.title,
+      fileKey,
+      sha256,
     });
-    if (existing) {
+    if (!result.created) {
       log.info({ title: doc.title, type: doc.type }, 'v1 already present, skipped');
       continue;
     }
-
-    await prisma.$transaction(async (tx) => {
-      const created = await tx.document.create({ data: { type: doc.type, title: doc.title } });
-      const version = await tx.documentVersion.create({
-        data: { documentId: created.id, versionNo: 1, fileKey, sha256 },
-      });
-      await tx.document.update({
-        where: { id: created.id },
-        data: { currentVersionId: version.id },
-      });
-    });
     log.info({ title: doc.title, type: doc.type, sha256 }, 'seeded v1 (queued)');
   }
 } finally {

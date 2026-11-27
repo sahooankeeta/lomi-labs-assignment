@@ -18,6 +18,10 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@lomi/config": "workspace:*"
+    "@lomi/config": "workspace:*",
+    "unpdf": "^2.2.2"
+  },
+  "dependencies": {
+    "@lomi/shared": "workspace:*"
   }
 }

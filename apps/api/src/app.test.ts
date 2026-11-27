@@ -9,6 +9,11 @@ const deps = (overrides: Partial<Deps> = {}): Deps => ({
   pingDb: ok,
   pingRedis: ok,
   close: ok,
+  // Health tests never touch these.
+  db: {} as Deps['db'],
+  files: {} as Deps['files'],
+  fields: { invoice: [], lease: [], market_report: [] },
+  enqueue: ok,
   ...overrides,
 });
 

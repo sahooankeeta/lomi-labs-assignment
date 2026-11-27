@@ -1,6 +1,8 @@
 import { createDb } from '@lomi/db';
+import { LocalFileStore } from '@lomi/files';
 import { createLogger, describeUrl, errInfo, logConnections } from '@lomi/logger';
-import { createExtractionQueue, redisConnection } from '@lomi/queue';
+import { createExtractionQueue, enqueueExtraction, redisConnection } from '@lomi/queue';
+import { loadExpectedFields } from '@lomi/shared/node';
 import { buildApp } from './app.js';
 import { loadEnv } from './env.js';
 
@@ -25,6 +27,10 @@ const app = buildApp(
   {
     pingDb,
     pingRedis,
+    db: prisma,
+    files: new LocalFileStore(env.UPLOAD_DIR),
+    fields: loadExpectedFields(),
+    enqueue: (versionId, attempts) => enqueueExtraction(queue, versionId, attempts),
     close: async () => {
       await queue.close();
       await redis.quit();
