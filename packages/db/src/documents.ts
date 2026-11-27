@@ -1,7 +1,6 @@
-import { computeProgress } from '@lomi/shared';
 import type { DocumentDetailDto, DocumentType, ExpectedFields, ValueDto } from '@lomi/shared';
 import type { Db } from './client.js';
-import { loadValuesWithLatestReview, reviewStateOf } from './value-rows.js';
+import { loadValuesWithLatestReview, progressOf, reviewStateOf } from './value-rows.js';
 
 /**
  * Document lifecycle reads and writes used by the api and the seed script.
@@ -146,9 +145,7 @@ export async function getDocumentDetail(
       createdAt: version.createdAt.toISOString(),
     },
     values,
-    progress: computeProgress(
-      values.map((v) => ({ reviewState: v.reviewState, isGap: v.value === null })),
-    ),
+    progress: progressOf(rows, defs),
   };
 }
 

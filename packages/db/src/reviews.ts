@@ -64,10 +64,11 @@ export async function reviewValue(
       return { kind: 'not_reviewable', reason: `version is ${version.status}, not extracted` };
     }
 
+    const defs = opts.fields[document.type];
     let correctedValue: string | null = null;
     if (input.action === 'correct') {
       correctedValue = input.value.trim();
-      const type = opts.fields[document.type].find((f) => f.field === value.field)?.type;
+      const type = defs.find((f) => f.field === value.field)?.type;
       // A field no longer defined for the type can't be validated, so it can't be corrected.
       if (!type) {
         return {
@@ -103,7 +104,7 @@ export async function reviewValue(
           createdAt: review.createdAt.toISOString(),
         },
         reviewState: reviewStateOf(self),
-        progress: progressOf(rows),
+        progress: progressOf(rows, defs),
       },
     };
   });
@@ -111,13 +112,16 @@ export async function reviewValue(
 
 /**
  * Backs `GET /documents`: every document, newest first, with its current version's number
- * and status and that version's review progress.
+ * and status and that version's review progress (only fields defined for the type).
  *
  * Two queries regardless of document count: the documents with their current version,
  * then all those versions' values with their newest review. A document without a current
  * version (which `createDocumentWithV1` never produces) is skipped.
  */
-export async function listDocuments(db: Db): Promise<DocumentListItemDto[]> {
+export async function listDocuments(
+  db: Db,
+  opts: { fields: ExpectedFields },
+): Promise<DocumentListItemDto[]> {
   const documents = await db.document.findMany({
     orderBy: { createdAt: 'desc' },
     include: { currentVersion: true },
@@ -136,23 +140,30 @@ export async function listDocuments(db: Db): Promise<DocumentListItemDto[]> {
     type: document.type,
     versionNo: version.versionNo,
     status: version.status,
-    progress: progressOf(rows.filter((r) => r.versionId === version.id)),
+    progress: progressOf(
+      rows.filter((r) => r.versionId === version.id),
+      opts.fields[document.type],
+    ),
     createdAt: document.createdAt.toISOString(),
   }));
 }
 
 /**
- * Review progress of a document's current version; `null` when the document is unknown.
+ * Review progress of a document's current version (only fields defined for its type); `null` when the document is unknown.
  * A version that isn't extracted yet has no values, so it reports all zeros.
  */
-export async function getProgress(db: Db, documentId: string): Promise<ProgressDto | null> {
+export async function getProgress(
+  db: Db,
+  documentId: string,
+  opts: { fields: ExpectedFields },
+): Promise<ProgressDto | null> {
   const document = await db.document.findUnique({
     where: { id: documentId },
-    select: { currentVersionId: true },
+    select: { type: true, currentVersionId: true },
   });
   if (!document) return null;
   const rows = document.currentVersionId
     ? await loadValuesWithLatestReview(db, [document.currentVersionId])
     : [];
-  return progressOf(rows);
+  return progressOf(rows, opts.fields[document.type]);
 }

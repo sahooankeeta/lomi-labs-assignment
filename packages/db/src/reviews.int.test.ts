@@ -1,7 +1,7 @@
 import type { ExpectedFields } from '@lomi/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from './client.js';
-import { createDocumentWithV1 } from './documents.js';
+import { createDocumentWithV1, getDocumentDetail } from './documents.js';
 import { getProgress, listDocuments, reviewValue } from './reviews.js';
 import { TEST_DATABASE_URL, truncateAll } from './testing.js';
 
@@ -178,7 +178,7 @@ describe('listDocuments / getProgress', () => {
     });
     await reviewValue(db, a.ids.vendor!, { action: 'approve' }, opts);
 
-    const list = await listDocuments(db);
+    const list = await listDocuments(db, opts);
     expect(list.map((d) => d.id)).toEqual([b.documentId, a.documentId]);
     expect(list[1]).toMatchObject({
       title: 'Doc a',
@@ -198,7 +198,19 @@ describe('listDocuments / getProgress', () => {
       fileKey: 'q.pdf',
       sha256: 'q',
     });
-    expect(await getProgress(db, r.documentId)).toEqual(zeros);
-    expect(await getProgress(db, '00000000-0000-4000-8000-000000000000')).toBeNull();
+    expect(await getProgress(db, r.documentId, opts)).toEqual(zeros);
+    expect(await getProgress(db, '00000000-0000-4000-8000-000000000000', opts)).toBeNull();
+  });
+
+  it('every progress path ignores a stored value whose field is not defined for the type', async () => {
+    const d = await extractedDoc({ vendor: 'Acme', legacy_field: 'old' });
+    const r = await reviewValue(db, d.ids.vendor!, { action: 'approve' }, opts);
+    if (r.kind !== 'reviewed') throw new Error(r.kind);
+    const detail = await getDocumentDetail(db, d.documentId, opts);
+    expect(r.result.progress.total).toBe(1);
+    expect(r.result.progress).toEqual({ ...zeros, approved: 1, total: 1 });
+    expect(detail!.progress).toEqual(r.result.progress);
+    expect(await getProgress(db, d.documentId, opts)).toEqual(r.result.progress);
+    expect((await listDocuments(db, opts))[0]!.progress).toEqual(r.result.progress);
   });
 });

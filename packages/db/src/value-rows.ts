@@ -5,7 +5,7 @@ import type { Db } from './client.js';
 /**
  * Private to this package (not exported from index.ts): the one place that loads values
  * with their newest review and turns them into review states and progress, so the detail
- * view, the list, `getProgress` and `reviewValue` can never disagree on the counts.
+ * view, the list, `getProgress` and `reviewValue` all derive their counts the same way.
  */
 
 /** Anything with `extractedValue`: the client itself or an interactive-transaction client. */
@@ -32,9 +32,17 @@ export function reviewStateOf(row: ValueWithLatestReview): ValueReviewState {
   });
 }
 
-/** Progress over one version's loaded values; a version with no values (not extracted yet) is all zeros. */
-export function progressOf(rows: ValueWithLatestReview[]): ProgressDto {
+/**
+ * Progress over one version's loaded values, counting only fields defined for the
+ * document's type (`defs`), the same set the detail view lists, so a stored value for a
+ * field since removed from the type never shows up in the counts. A version with no
+ * values (not extracted yet) is all zeros.
+ */
+export function progressOf(rows: ValueWithLatestReview[], defs: { field: string }[]): ProgressDto {
+  const known = new Set(defs.map((d) => d.field));
   return computeProgress(
-    rows.map((r) => ({ reviewState: reviewStateOf(r), isGap: r.value === null })),
+    rows
+      .filter((r) => known.has(r.field))
+      .map((r) => ({ reviewState: reviewStateOf(r), isGap: r.value === null })),
   );
 }
