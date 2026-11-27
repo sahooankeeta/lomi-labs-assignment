@@ -168,7 +168,17 @@ The script needs bash (Git Bash on Windows), `curl` and `docker compose`, and th
 
 ### Live extraction check
 
-Result recorded below after the first live run.
+Run with `EXTRACTOR=gemini` (free tier) on 2026-11-27: the three fixtures were uploaded as new documents and extracted by `gemini-3.6-flash` (no fallback needed, one attempt each, 33 to 42 s per document). Result: **16 of 16 fields correct**, including the expected gap.
+
+| Fixture       | Time   | Values                                                                                                                                                                                                                  |
+| ------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invoice       | 35.7 s | `invoice_number` INV-2025-0847, `issue_date` 2025-09-14, `due_date` 2025-10-14, `vendor_name` MERIDIAN OFFICE SUPPLIES LLC, `total_amount` $5,230.29                                                                    |
+| lease         | 42.3 s | `tenant_name` Dana Okafor, `monthly_rent` $2,350.00, `security_deposit` $3,525.00, `lease_start` March 1, 2025, `term_months` 24                                                                                        |
+| market report | 32.9 s | `report_quarter` Q3 2025, `market_area` Eastport-Harborview Submarket, `vacancy_rate` 4.2%, `average_rent_1br` $1,985, `year_over_year_rent_growth` 3.8%, `median_household_income` **gap** ("not stated in this part") |
+
+`median_household_income` is a real gap: the report does not contain it, and the model returned no value instead of guessing.
+
+History: an earlier run (before the numeric fix) was 15/16. The lease `term_months` came back as "twenty-four (24)" and failed the strict check. Since `e5dd89f` (prompt v2 and one-distinct-number rule, see [0007](docs/decisions/0007-numeric-values.md)) `term_months` is `24` and the run is 16/16. If every Gemini model is busy (429/503/timeouts) the versions go `failed` with a clear error and `POST /documents/:id/retry` re-runs only the missing chunks; no retry loop is built in beyond one retry per model.
 
 ## Schema
 
