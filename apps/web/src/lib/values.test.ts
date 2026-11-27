@@ -1,6 +1,6 @@
-import type { ValueDto } from '@lomi/shared';
+import type { PreviousValueDto, ReviewDto, ValueDto } from '@lomi/shared';
 import { describe, expect, it } from 'vitest';
-import { effectiveValue, groupValues } from './values';
+import { effectiveValue, groupValues, previousLabel, primaryAction } from './values';
 
 function v(field: string, over: Partial<ValueDto> = {}): ValueDto {
   return {
@@ -16,6 +16,9 @@ function v(field: string, over: Partial<ValueDto> = {}): ValueDto {
     evidenceEnd: null,
     reviewState: 'pending',
     latestReview: null,
+    carriedReview: null,
+    previous: null,
+    earlierCount: 0,
     ...over,
   };
 }
@@ -48,5 +51,127 @@ describe('effectiveValue', () => {
     );
     expect(effectiveValue(v('b', { reviewState: 'approved' }))).toBe('B');
     expect(effectiveValue(v('c', { value: null }))).toBeNull();
+  });
+});
+
+const approve: ReviewDto = { id: 'r1', action: 'approve', correctedValue: null, note: null, createdAt: '' };
+const correct = (value: string): ReviewDto => ({
+  id: 'r2',
+  action: 'correct',
+  correctedValue: value,
+  note: null,
+  createdAt: '',
+});
+
+function prev(over: Partial<PreviousValueDto> = {}): PreviousValueDto {
+  return {
+    id: 'p',
+    versionNo: 1,
+    value: '$5,230.29',
+    effectiveValue: '$5,230.29',
+    evidence: 'Total $5,230.29',
+    evidencePage: 1,
+    reviewState: 'pending',
+    review: null,
+    change: 'value',
+    ...over,
+  };
+}
+
+describe('previousLabel', () => {
+  it('is null without a previous value', () => {
+    expect(previousLabel(v('a'))).toBeNull();
+  });
+  it('names the previous value and its effective review when the value changed', () => {
+    const label = (review: ReviewDto | null) =>
+      previousLabel(v('a', { previous: prev({ review }) }));
+    expect(label(approve)).toBe('was $5,230.29 in v1 (approved)');
+    expect(label(correct('X'))).toBe('was $5,230.29 in v1 (corrected)');
+    expect(label(null)).toBe('was $5,230.29 in v1 (not reviewed)');
+  });
+  it('describes a previous gap', () => {
+    const gap = { value: null, effectiveValue: null, evidence: null, evidencePage: null };
+    expect(previousLabel(v('a', { previous: prev({ ...gap }) }))).toBe(
+      'was a gap in v1 (not reviewed)',
+    );
+    // On a gap an approve means "confirmed absent", never "approved".
+    expect(previousLabel(v('a', { previous: prev({ ...gap, review: approve }) }))).toBe(
+      'was a gap in v1 (confirmed absent)',
+    );
+  });
+  it('describes a gap that stays a gap', () => {
+    const gap = { value: null, effectiveValue: null, change: 'gap' as const };
+    expect(previousLabel(v('a', { previous: prev({ ...gap, review: approve }) }))).toBe(
+      'also a gap in v1 (confirmed absent)',
+    );
+    expect(
+      previousLabel(
+        v('a', { previous: prev({ ...gap, effectiveValue: '52000', review: correct('52000') }) }),
+      ),
+    ).toBe('also a gap in v1, corrected to 52000');
+    expect(previousLabel(v('a', { previous: prev({ ...gap }) }))).toBe(
+      'also a gap in v1 (not reviewed)',
+    );
+  });
+  it('says when only the quote changed', () => {
+    expect(
+      previousLabel(v('a', { previous: prev({ change: 'evidence', review: approve }) })),
+    ).toBe('same value as v1 (approved), but its quote changed');
+  });
+  it('labels unchanged values by whether a review was carried', () => {
+    expect(
+      previousLabel(
+        v('a', {
+          previous: prev({ change: null, reviewState: 'corrected', review: correct('X') }),
+          carriedReview: correct('X'),
+        }),
+      ),
+    ).toBe('carried over from v1 (corrected)');
+    expect(previousLabel(v('a', { previous: prev({ change: null }) }))).toBe(
+      'unchanged from v1 (not reviewed there)',
+    );
+  });
+  it('names the previous review, not its state, for a value v1 itself carried', () => {
+    expect(
+      previousLabel(
+        v('a', {
+          previous: prev({ versionNo: 2, change: null, reviewState: 'carried_over', review: approve }),
+          carriedReview: approve,
+        }),
+      ),
+    ).toBe('carried over from v2 (approved)');
+  });
+});
+
+describe('primaryAction', () => {
+  const rev = (action: 'approve' | 'correct', correctedValue: string | null = null): ReviewDto => ({
+    id: 'r',
+    action,
+    correctedValue,
+    note: null,
+    createdAt: '2026-01-01T00:00:00Z',
+  });
+
+  it('keeps a carried correction instead of approving over it', () => {
+    expect(
+      primaryAction(v('a', { reviewState: 'carried_over', carriedReview: rev('correct', '42') })),
+    ).toEqual({ label: 'Keep correction', body: { action: 'correct', value: '42' } });
+  });
+
+  it('approves a carried approval', () => {
+    expect(
+      primaryAction(v('a', { reviewState: 'carried_over', carriedReview: rev('approve') })),
+    ).toEqual({ label: 'Approve', body: { action: 'approve' } });
+  });
+
+  it('confirms a gap as absent', () => {
+    expect(primaryAction(v('a', { value: null }))).toEqual({
+      label: 'Confirm absent',
+      body: { action: 'approve' },
+    });
+  });
+
+  it('approves a pending value', () => {
+    expect(primaryAction(v('a'))).toEqual({ label: 'Approve', body: { action: 'approve' } });
   });
 });

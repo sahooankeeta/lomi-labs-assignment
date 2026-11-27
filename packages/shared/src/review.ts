@@ -22,6 +22,24 @@ export function deriveReviewState(v: {
   return v.carriedReviewId ? 'carried_over' : 'pending';
 }
 
+/**
+ * The value a reader should treat as current for a field: the reviewer's correction if
+ * there is one, else the extracted value.
+ *
+ * An own latest review decides alone: an own `approve` means the reviewer re-checked this
+ * exact value and accepted it, so it overrides a correction carried from an older
+ * version. Only with no own review does a carried `correct` apply.
+ */
+export function effectiveValue(v: {
+  value: string | null;
+  latestReview: { action: ReviewAction; correctedValue: string | null } | null;
+  carriedReview: { action: ReviewAction; correctedValue: string | null } | null;
+}): string | null {
+  const decisive = v.latestReview ?? v.carriedReview;
+  if (decisive?.action === 'correct') return decisive.correctedValue;
+  return v.value;
+}
+
 /** Counts of a version's values by review state, plus how many are gaps. */
 export const ProgressDto = z.object({
   pending: z.number().int().nonnegative(),

@@ -1,6 +1,8 @@
-import type { Candidate, DocumentType, FinalValue } from '@lomi/shared';
+import { isUnchanged } from '@lomi/extraction';
+import type { Candidate, DocumentType, FieldDef, FinalValue } from '@lomi/shared';
 import type { Db } from './client.js';
 import type { ChunkResult, VersionChunk } from './generated/client.js';
+import { loadValuesWithLatestReview } from './value-rows.js';
 
 /**
  * Worker coordination: how a worker claims a version, keeps it, and ends its run
@@ -350,14 +352,78 @@ export async function saveChunkResult(
   });
 }
 
+type Tx = Parameters<Parameters<Db['$transaction']>[0]>[0];
+
+/**
+ * Works out, per field, the previous-value link and the review to carry (see
+ * `finishVersion`). Runs inside its transaction.
+ *
+ * The previous version's reviews cannot change while this runs: it stopped being the
+ * current version the moment this one was created, and `reviewValue` rejects reviews on
+ * a non-current version. So reading its newest review here is stable.
+ */
+async function carryLinks(
+  tx: Tx,
+  versionId: string,
+  values: FinalValue[],
+  fields: FieldDef[],
+): Promise<Map<string, { previousValueId: string; carriedReviewId: string | null }>> {
+  const links = new Map<string, { previousValueId: string; carriedReviewId: string | null }>();
+  const self = await tx.documentVersion.findUniqueOrThrow({
+    where: { id: versionId },
+    select: { documentId: true, versionNo: true, parsedText: true },
+  });
+  const prev = await tx.documentVersion.findFirst({
+    where: {
+      documentId: self.documentId,
+      versionNo: { lt: self.versionNo },
+      status: 'extracted',
+    },
+    orderBy: { versionNo: 'desc' },
+    select: { id: true },
+  });
+  if (!prev) return links;
+
+  const prevByField = new Map(
+    (await loadValuesWithLatestReview(tx, [prev.id])).map((p) => [p.field, p]),
+  );
+  const typeByField = new Map(fields.map((f) => [f.field, f.type]));
+  for (const next of values) {
+    const p = prevByField.get(next.field);
+    if (!p) continue;
+    const type = typeByField.get(next.field);
+    // Parsed text is always stored before finish; null would leave nothing to compare against,
+    // so carry nothing but still link the previous value.
+    const unchanged =
+      type !== undefined && self.parsedText !== null && isUnchanged(p, next, self.parsedText, type);
+    links.set(next.field, {
+      previousValueId: p.id,
+      carriedReviewId: unchanged ? (p.reviews[0]?.id ?? p.carriedReviewId ?? null) : null,
+    });
+  }
+  return links;
+}
+
 /**
  * Writes the final values and completes the run, exactly once.
  *
  * In one transaction: a guarded UPDATE (id, `activeRunId = runId`, status `extracting`)
  * moves the version to `extracted` and clears the lease. Only if that matched a row are
  * the values inserted (unique per version+field, `skipDuplicates`) and the run marked
- * `succeeded`. Previous-version carry-over is Phase 3, so `previousValueId` and
- * `carriedReviewId` stay null.
+ * `succeeded`.
+ *
+ * Carry-over happens in the same transaction, so a value never exists without its links.
+ * The previous version is the latest `extracted` one older than this version (superseded
+ * and failed versions have no values and are skipped). For each field it has a value for,
+ * `previousValueId` links to it, changed or not. When the value is unchanged (`isUnchanged`:
+ * same normalized value and the old quote still in this version's text) the new value also
+ * gets `carriedReviewId` = the previous value's effective review (its own newest review,
+ * else the one it itself carried), so a review passes down a chain of versions. A field
+ * missing from `opts.fields` has no type to compare by and never carries. Gaps never carry.
+ * With no previous extracted version every link stays null.
+ *
+ * `opts.fields` are the document type's field definitions (the worker passes its
+ * `expected`); they supply each field's type for the comparison.
  *
  * - `'finished'`: the caller may enqueue follow-up work.
  * - `'stale'`: another run owns the version, or it was already finished/failed. Nothing
@@ -368,6 +434,7 @@ export async function finishVersion(
   versionId: string,
   runId: string,
   values: FinalValue[],
+  opts: { fields: FieldDef[] },
 ): Promise<'finished' | 'stale'> {
   const finished = await db.$transaction(async (tx) => {
     const { count } = await tx.documentVersion.updateMany({
@@ -377,10 +444,14 @@ export async function finishVersion(
     // Nothing was written yet, so leaving the transaction here is the rollback.
     if (count === 0) return false;
 
+    const links = await carryLinks(tx, versionId, values, opts.fields);
+
     await tx.extractedValue.createMany({
       data: values.map((v) => ({
         versionId,
         field: v.field,
+        previousValueId: links.get(v.field)?.previousValueId ?? null,
+        carriedReviewId: links.get(v.field)?.carriedReviewId ?? null,
         value: v.value,
         evidence: v.evidence,
         gapReason: v.gapReason,

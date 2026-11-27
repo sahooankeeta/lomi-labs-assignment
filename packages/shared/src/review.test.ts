@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ReviewInput, computeProgress, deriveReviewState } from './review.js';
+import { ReviewInput, computeProgress, deriveReviewState, effectiveValue } from './review.js';
 
 describe('deriveReviewState', () => {
   it('maps an approve review to approved', () => {
@@ -57,5 +57,32 @@ describe('ReviewInput', () => {
   });
   it('rejects an unknown action', () => {
     expect(() => ReviewInput.parse({ action: 'delete' })).toThrow();
+  });
+});
+
+describe('effectiveValue', () => {
+  const correct = (v: string) => ({ action: 'correct' as const, correctedValue: v });
+  const approve = { action: 'approve' as const, correctedValue: null };
+  it('uses an own correction', () => {
+    expect(effectiveValue({ value: 'A', latestReview: correct('X'), carriedReview: null })).toBe(
+      'X',
+    );
+  });
+  it('lets an own approve beat a carried correction', () => {
+    expect(effectiveValue({ value: 'A', latestReview: approve, carriedReview: correct('X') })).toBe(
+      'A',
+    );
+  });
+  it('uses a carried correction when there is no own review', () => {
+    expect(effectiveValue({ value: 'A', latestReview: null, carriedReview: correct('X') })).toBe(
+      'X',
+    );
+  });
+  it('falls back to the extracted value', () => {
+    expect(effectiveValue({ value: 'A', latestReview: null, carriedReview: null })).toBe('A');
+    expect(effectiveValue({ value: 'A', latestReview: null, carriedReview: approve })).toBe('A');
+  });
+  it('is null for an unreviewed gap', () => {
+    expect(effectiveValue({ value: null, latestReview: null, carriedReview: null })).toBeNull();
   });
 });

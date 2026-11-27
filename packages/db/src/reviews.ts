@@ -30,7 +30,7 @@ export type ReviewValueResult =
  * - A correction must parse as the field's type (`normalizeValue`), else `invalid_value`.
  *   The text the reviewer typed (trimmed) is stored, not the normalized form.
  *
- * The document row is locked `FOR SHARE` before the checks. Phase 3's new-version
+ * The document row is locked `FOR SHARE` before the checks. `createVersion`'s
  * transaction takes `FOR UPDATE` on that same row, so a review either commits before the
  * supersede starts or waits for it and then sees the new current version. Without the
  * lock a review could land on a version in the instant it stops being current.

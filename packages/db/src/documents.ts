@@ -1,6 +1,23 @@
-import type { DocumentDetailDto, DocumentType, ExpectedFields, ValueDto } from '@lomi/shared';
+import { isUnchanged, normalizeValue } from '@lomi/extraction';
+import { deriveReviewState, effectiveValue } from '@lomi/shared';
+import type {
+  DocumentDetailDto,
+  DocumentType,
+  ExpectedFields,
+  FieldType,
+  PreviousValueDto,
+  ReviewDto,
+  ValueDto,
+  ValueHistoryDto,
+} from '@lomi/shared';
 import type { Db } from './client.js';
-import { loadValuesWithLatestReview, progressOf, reviewStateOf } from './value-rows.js';
+import {
+  loadChainIds,
+  loadEarlierCounts,
+  loadValuesWithLatestReview,
+  progressOf,
+  reviewStateOf,
+} from './value-rows.js';
 
 /**
  * Document lifecycle reads and writes used by the api and the seed script.
@@ -71,6 +88,47 @@ export async function createDocumentWithV1(
   });
 }
 
+/** A stored review row as the API shape. */
+function toReviewDto(r: {
+  id: string;
+  action: ReviewDto['action'];
+  correctedValue: string | null;
+  note: string | null;
+  createdAt: Date;
+}): ReviewDto {
+  return {
+    id: r.id,
+    action: r.action,
+    correctedValue: r.correctedValue,
+    note: r.note,
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Classifies how the previous version's value differs from the shown one, using the
+ * extracted (not corrected) values: carry-over compares the same thing, so the label
+ * always agrees with what carry-over decided.
+ *
+ * Without the shown version's text or the field's type the quote can't be checked, so a
+ * pair of values is reported as 'value' (the safe "look again") rather than throwing.
+ */
+function classifyChange(
+  prev: { value: string | null; evidence: string | null },
+  next: { value: string | null },
+  newText: string | null,
+  type: FieldType | undefined,
+): PreviousValueDto['change'] {
+  if (prev.value === null && next.value === null) return 'gap';
+  if (prev.value === null || next.value === null) return 'value';
+  if (newText === null || type === undefined) return 'value';
+  if (isUnchanged(prev, next, newText, type)) return null;
+  // Not unchanged: equal normalized values mean only the quote is gone.
+  const a = normalizeValue(prev.value, type);
+  const b = normalizeValue(next.value, type);
+  return a !== null && a === b ? 'evidence' : 'value';
+}
+
 /**
  * The read model behind `GET /documents/:id`: one version (the current one, or
  * `versionNo` when given) with its extracted values and their review state and progress counts.
@@ -100,6 +158,20 @@ export async function getDocumentDetail(
   if (!version) return null;
 
   const rows = await loadValuesWithLatestReview(db, [version.id]);
+  const earlier = await loadEarlierCounts(
+    db,
+    rows.map((r) => r.id),
+  );
+  // A client viewing an old version needs to know it is not the current one.
+  const currentVersionNo =
+    document.currentVersionId && document.currentVersionId !== version.id
+      ? (
+          await db.documentVersion.findUniqueOrThrow({
+            where: { id: document.currentVersionId },
+            select: { versionNo: true },
+          })
+        ).versionNo
+      : version.versionNo;
 
   const defs = opts.fields[document.type];
   const values: ValueDto[] = [];
@@ -108,6 +180,30 @@ export async function getDocumentDetail(
     if (!row) continue;
     const review = row.reviews[0] ?? null;
     const reviewState = reviewStateOf(row);
+    const prevRow = row.previousValue;
+    let previous: PreviousValueDto | null = null;
+    if (prevRow) {
+      const prevOwn = prevRow.reviews[0] ?? null;
+      const prevReview = prevOwn ?? prevRow.carriedReview;
+      previous = {
+        id: prevRow.id,
+        versionNo: prevRow.version.versionNo,
+        value: prevRow.value,
+        effectiveValue: effectiveValue({
+          value: prevRow.value,
+          latestReview: prevOwn,
+          carriedReview: prevRow.carriedReview,
+        }),
+        evidence: prevRow.evidence,
+        evidencePage: prevRow.evidencePage,
+        reviewState: deriveReviewState({
+          latestReviewAction: prevOwn?.action ?? null,
+          carriedReviewId: prevRow.carriedReviewId,
+        }),
+        review: prevReview && toReviewDto(prevReview),
+        change: classifyChange(prevRow, row, version.parsedText, def.type),
+      };
+    }
     values.push({
       id: row.id,
       field: row.field,
@@ -120,13 +216,10 @@ export async function getDocumentDetail(
       evidenceStart: row.evidenceStart,
       evidenceEnd: row.evidenceEnd,
       reviewState,
-      latestReview: review && {
-        id: review.id,
-        action: review.action,
-        correctedValue: review.correctedValue,
-        note: review.note,
-        createdAt: review.createdAt.toISOString(),
-      },
+      latestReview: review && toReviewDto(review),
+      carriedReview: row.carriedReview && toReviewDto(row.carriedReview),
+      previous,
+      earlierCount: earlier.get(row.id) ?? 0,
     });
   }
 
@@ -146,7 +239,50 @@ export async function getDocumentDetail(
     },
     values,
     progress: progressOf(rows, defs),
+    currentVersionNo,
   };
+}
+
+/**
+ * The history of one field across versions, newest first, starting with the value asked
+ * for (so asking for an old version's value shows only it and what came before).
+ * `null` when the value id is unknown.
+ *
+ * The chain is walked with one recursive query, then every entry's reviews and carried
+ * review load in a second one (no per-entry queries). `reviews` holds all own reviews,
+ * oldest first, since they are append-only and are the full record.
+ */
+export async function getValueHistory(db: Db, valueId: string): Promise<ValueHistoryDto | null> {
+  const ids = await loadChainIds(db, valueId);
+  if (ids.length === 0) return null;
+  const rows = await db.extractedValue.findMany({
+    where: { id: { in: ids } },
+    include: {
+      version: { select: { versionNo: true, status: true } },
+      reviews: { orderBy: { createdAt: 'asc' } },
+      carriedReview: true,
+    },
+  });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const entries = ids.map((id) => {
+    const r = byId.get(id)!;
+    return {
+      valueId: r.id,
+      versionNo: r.version.versionNo,
+      versionStatus: r.version.status,
+      value: r.value,
+      evidence: r.evidence,
+      evidencePage: r.evidencePage,
+      gapReason: r.gapReason,
+      reviewState: deriveReviewState({
+        latestReviewAction: r.reviews[r.reviews.length - 1]?.action ?? null,
+        carriedReviewId: r.carriedReviewId,
+      }),
+      carriedReview: r.carriedReview && toReviewDto(r.carriedReview),
+      reviews: r.reviews.map(toReviewDto),
+    };
+  });
+  return { field: byId.get(ids[0]!)!.field, entries };
 }
 
 export type RetryResult =

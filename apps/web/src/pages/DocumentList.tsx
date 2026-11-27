@@ -2,7 +2,6 @@ import {
   Alert,
   Anchor,
   Button,
-  FileInput,
   Group,
   Loader,
   Select,
@@ -16,9 +15,10 @@ import { DocumentType, type DocumentListItemDto, type DocumentSummaryDto } from 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ApiRequestError, apiGet, apiUpload } from '../api';
+import { apiGet, apiUpload } from '../api';
+import { PdfDrop } from '../components/PdfDrop';
 import { StatusPill } from '../components/StatusPill';
-import { progressLabel } from '../lib/format';
+import { progressLabel, uploadErrorMessage } from '../lib/format';
 import { pollInterval } from '../lib/poll';
 
 /** Upload form: picks a type, optional title and a PDF, then opens the created document. */
@@ -49,11 +49,7 @@ function UploadForm() {
     upload.mutate(form);
   };
 
-  const err = upload.error;
-  const errMessage =
-    err instanceof ApiRequestError && err.status === 413
-      ? 'file is larger than 20 MB'
-      : err?.message;
+  const errMessage = upload.isError ? uploadErrorMessage(upload.error) : null;
 
   return (
     <form onSubmit={submit}>
@@ -72,14 +68,7 @@ function UploadForm() {
             value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
           />
-          <FileInput
-            label="PDF"
-            placeholder="Choose a PDF"
-            accept="application/pdf"
-            value={file}
-            onChange={setFile}
-            required
-          />
+          <PdfDrop label="PDF" file={file} onChange={setFile} />
         </Group>
         <Group>
           <Button type="submit" loading={upload.isPending} disabled={!type || !file}>

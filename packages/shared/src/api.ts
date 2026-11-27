@@ -24,6 +24,30 @@ export const ReviewDto = z.object({
 });
 export type ReviewDto = z.infer<typeof ReviewDto>;
 
+/**
+ * What the previous version held for the same field, shown beside a value whose evidence
+ * changed (or that carried over) so the reviewer sees what moved.
+ */
+export const PreviousValueDto = z.object({
+  id: z.string(),
+  versionNo: z.number().int(),
+  value: z.string().nullable(),
+  /** The previous value after its review (correction applied). */
+  effectiveValue: z.string().nullable(),
+  evidence: z.string().nullable(),
+  evidencePage: z.number().int().nullable(),
+  reviewState: ValueReviewState,
+  /** Its effective review: its own latest, else the one it carried. */
+  review: ReviewDto.nullable(),
+  /**
+   * How it differs from the shown value; null when unchanged. 'gap' = both are gaps
+   * (never carried), 'evidence' = same value but its quote is gone, 'value' = otherwise.
+   * Computed server-side so the UI never needs the normalizers.
+   */
+  change: z.enum(['value', 'evidence', 'gap']).nullable(),
+});
+export type PreviousValueDto = z.infer<typeof PreviousValueDto>;
+
 export const ValueDto = z.object({
   id: z.string(),
   field: z.string(),
@@ -37,6 +61,11 @@ export const ValueDto = z.object({
   evidenceEnd: z.number().int().nullable(),
   reviewState: ValueReviewState,
   latestReview: ReviewDto.nullable(),
+  /** The review inherited from the previous version (set only when the value is unchanged). */
+  carriedReview: ReviewDto.nullable(),
+  previous: PreviousValueDto.nullable(),
+  /** Earlier versions in this field's chain: 0 = none, 1 = only `previous`. */
+  earlierCount: z.number().int().nonnegative(),
 });
 export type ValueDto = z.infer<typeof ValueDto>;
 
@@ -62,8 +91,44 @@ export const DocumentDetailDto = z.object({
   values: z.array(ValueDto),
   /** Review progress of the shown version's values. */
   progress: ProgressDto,
+  /** The document's current version number, so a client can tell it is showing history. */
+  currentVersionNo: z.number().int(),
 });
 export type DocumentDetailDto = z.infer<typeof DocumentDetailDto>;
+
+/** One row of a document's version list. */
+export const VersionSummaryDto = z.object({
+  id: z.string(),
+  versionNo: z.number().int(),
+  status: VersionStatus,
+  error: z.string().nullable(),
+  /** ISO 8601 */
+  createdAt: z.string(),
+});
+export type VersionSummaryDto = z.infer<typeof VersionSummaryDto>;
+
+/** One version's take on a field, with its full review record. */
+export const ValueHistoryEntryDto = z.object({
+  valueId: z.string(),
+  versionNo: z.number().int(),
+  versionStatus: VersionStatus,
+  value: z.string().nullable(),
+  evidence: z.string().nullable(),
+  evidencePage: z.number().int().nullable(),
+  gapReason: z.string().nullable(),
+  reviewState: ValueReviewState,
+  carriedReview: ReviewDto.nullable(),
+  /** Every own review, oldest first (reviews are append-only). */
+  reviews: z.array(ReviewDto),
+});
+export type ValueHistoryEntryDto = z.infer<typeof ValueHistoryEntryDto>;
+
+/** A field's history across versions, newest first, starting with the value asked for. */
+export const ValueHistoryDto = z.object({
+  field: z.string(),
+  entries: z.array(ValueHistoryEntryDto),
+});
+export type ValueHistoryDto = z.infer<typeof ValueHistoryDto>;
 
 export const DocumentSummaryDto = z.object({
   id: z.string(),

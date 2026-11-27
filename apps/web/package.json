@@ -22,6 +22,7 @@
   "dependencies": {
     "@lomi/shared": "workspace:*",
     "@mantine/core": "9.8.2",
+    "@mantine/dropzone": "9.8.2",
     "@mantine/hooks": "9.8.2",
     "@tanstack/react-query": "^5.108.4",
     "pdfjs-dist": "6.5.438",

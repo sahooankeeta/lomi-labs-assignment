@@ -1,11 +1,12 @@
 import { retryCurrentVersion, getDocumentDetail, createDocumentWithV1 } from '@lomi/db';
-import { UploadFields, type DocumentDetailDto, type DocumentSummaryDto } from '@lomi/shared';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { UploadFields, type DocumentDetailDto } from '@lomi/shared';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Deps } from '../app.js';
 import { HttpError } from '../errors.js';
+import { readPdfUpload } from '../upload.js';
+import { fireEnqueue, summarize } from './common.js';
 
-const PDF_MAGIC = Buffer.from('%PDF-');
 const IdParams = z.object({ id: z.uuid() });
 const DetailQuery = z.object({ version: z.coerce.number().int().positive().optional() });
 
@@ -13,36 +14,6 @@ const DetailQuery = z.object({ version: z.coerce.number().int().positive().optio
 function titleFromFilename(filename: string | undefined): string {
   const base = (filename ?? '').replace(/\.pdf$/i, '').trim();
   return (base || 'Untitled').slice(0, 200);
-}
-
-/** Summary of a document's current version, the body of every mutating route. */
-async function summarize(deps: Deps, documentId: string): Promise<DocumentSummaryDto> {
-  const doc = await deps.db.document.findUnique({
-    where: { id: documentId },
-    include: { currentVersion: true },
-  });
-  if (!doc?.currentVersion) throw new HttpError(404, 'not_found', 'document not found');
-  return {
-    id: doc.id,
-    title: doc.title,
-    type: doc.type,
-    versionNo: doc.currentVersion.versionNo,
-    status: doc.currentVersion.status,
-  };
-}
-
-/**
- * Fire-and-forget enqueue, called after the response body is built. Not awaited: the
- * queue's Redis connection retries forever, so an outage would hang the request.
- * Postgres is the source of truth and the reconciler repairs a lost hint; a failure is
- * only logged.
- */
-function fireEnqueue(deps: Deps, req: FastifyRequest, versionId: string, attempts: number): void {
-  Promise.resolve()
-    .then(() => deps.enqueue(versionId, attempts))
-    .catch((err: unknown) =>
-      req.log.warn({ versionId, err }, 'enqueue failed; reconciler will retry'),
-    );
 }
 
 /** Registers the document routes. Validation and persistence only: no PDF parsing, no LLM. */
@@ -62,25 +33,9 @@ export function documentRoutes(app: FastifyInstance, deps: Deps): void {
    * worker's reconciler picks up a queued version whose hint was lost.
    */
   app.post('/documents', async (req, reply) => {
-    const fields: Record<string, string> = {};
-    let file: { bytes: Buffer; filename: string | undefined } | undefined;
-
-    for await (const part of req.parts()) {
-      if (part.type === 'file') {
-        // Throws a 413 error past the `fileSize` limit; the error handler maps it.
-        file = { bytes: await part.toBuffer(), filename: part.filename };
-      } else if (typeof part.value === 'string') {
-        fields[part.fieldname] = part.value;
-      }
-    }
-
+    // Reads the body and checks the file (400 / 413) before anything is stored.
+    const { fields, file } = await readPdfUpload(req);
     const parsed = UploadFields.parse({ type: fields.type, title: fields.title || undefined });
-    if (!file || file.bytes.length === 0)
-      throw new HttpError(400, 'bad_request', 'file is required');
-    // Magic bytes, not the extension or Content-Type: both are client-controlled.
-    if (!file.bytes.subarray(0, PDF_MAGIC.length).equals(PDF_MAGIC)) {
-      throw new HttpError(400, 'bad_request', 'file is not a PDF');
-    }
 
     // File first, DB second: the row never points at a missing file. A crash in between
     // leaves an orphan file, which is harmless (content-addressed, reused by the next upload).

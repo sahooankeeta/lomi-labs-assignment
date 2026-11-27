@@ -7,7 +7,10 @@ import {
   claimVersion,
   createDb,
   createDocumentWithV1,
+  createVersion,
+  getDocumentDetail,
   retryCurrentVersion,
+  reviewValue,
   type Db,
 } from '@lomi/db';
 import { truncateAll } from '@lomi/db/testing';
@@ -257,6 +260,65 @@ describe('processVersion', () => {
     const other = await claimVersion(db, versionId, { model: 'fake' });
     expect(other.kind).toBe('skipped');
     expect(await run).toBe('finished');
+  });
+});
+
+describe('versions and carry-over', () => {
+  it('v2 of the invoice carries three approved values and leaves two pending', async () => {
+    const { documentId, versionId: v1 } = await seed('invoice', pdf('invoice-001.pdf'));
+    expect(await processVersion(deps(new FakeExtractor()), v1)).toBe('finished');
+    for (const v of await db.extractedValue.findMany({ where: { versionId: v1 } })) {
+      const r = await reviewValue(db, v.id, { action: 'approve' }, { fields });
+      expect(r.kind).toBe('reviewed');
+    }
+
+    const { key, sha256 } = await files.put(pdf('invoice-001.v2.pdf'));
+    const created = await createVersion(db, documentId, { fileKey: key, sha256 });
+    if (created.kind !== 'created') throw new Error(`expected created, got ${created.kind}`);
+    expect(await processVersion(deps(new FakeExtractor()), created.versionId)).toBe('finished');
+
+    const detail = await getDocumentDetail(db, documentId, { fields });
+    const state = (field: string) => detail!.values.find((v) => v.field === field)!;
+    for (const f of ['invoice_number', 'issue_date', 'vendor_name']) {
+      expect(state(f).reviewState).toBe('carried_over');
+    }
+    expect(state('due_date')).toMatchObject({ reviewState: 'pending' });
+    expect(state('due_date').previous?.value).toBe('2025-10-14');
+    expect(state('total_amount')).toMatchObject({ reviewState: 'pending' });
+    expect(state('total_amount').previous?.value).toBe('$5,230.29');
+    expect(detail!.progress).toEqual({
+      pending: 2,
+      approved: 0,
+      corrected: 0,
+      carried_over: 3,
+      gaps: 0,
+      total: 5,
+    });
+  });
+
+  it('v2 during v1 extraction: v1 goes stale and superseded, v2 starts with no links', async () => {
+    const { documentId, versionId: v1 } = await seed('invoice', pdf('invoice-001.pdf'));
+    // A short renewal period so the superseded run notices within milliseconds.
+    const slow = deps(new FakeExtractor({ delayMs: 1000 }), { renewMs: 25 });
+    const v1Run = processVersion(slow, v1);
+    // Poll the row rather than sleeping a fixed time: wait until v1 is really extracting.
+    const start = Date.now();
+    while ((await version(v1)).status !== 'extracting') {
+      if (Date.now() - start > 5000) throw new Error('v1 never started extracting');
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const { key, sha256 } = await files.put(pdf('invoice-001.v2.pdf'));
+    const created = await createVersion(db, documentId, { fileKey: key, sha256 });
+    if (created.kind !== 'created') throw new Error(`expected created, got ${created.kind}`);
+    expect(await v1Run).toBe('stale');
+    expect((await version(v1)).status).toBe('superseded');
+    expect(await valueCount(v1)).toBe(0);
+
+    expect(await processVersion(deps(new FakeExtractor()), created.versionId)).toBe('finished');
+    const rows = await db.extractedValue.findMany({ where: { versionId: created.versionId } });
+    expect(rows).toHaveLength(5);
+    for (const r of rows) expect(r.previousValueId).toBeNull();
   });
 });
 
