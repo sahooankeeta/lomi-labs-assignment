@@ -16,6 +16,12 @@ export async function parsePdf(
   bytes: Uint8Array,
 ): Promise<{ text: string; pageOffsets: number[] }> {
   const doc = await getDocumentProxy(new Uint8Array(bytes));
-  const { text } = await extractText(doc, { mergePages: false });
-  return joinPages(text);
+  try {
+    const { text } = await extractText(doc, { mergePages: false });
+    return joinPages(text);
+  } finally {
+    // unpdf destroys only documents it created itself; this one is ours, and without
+    // destroying it each parsed version would leak its pdf.js document for the worker's life.
+    await doc.destroy();
+  }
 }
