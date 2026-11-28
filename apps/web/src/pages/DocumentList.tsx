@@ -14,6 +14,8 @@ import type { DocumentListItemDto } from '@lomi/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { apiGet } from '../api';
+import { SidebarPortal } from '../components/SidebarSlot';
+import { UploadForm } from '../components/UploadForm';
 import { DeleteDocumentButton } from '../components/DeleteDocumentButton';
 import { DocumentTypePill } from '../components/DocumentTypePill';
 import { ReviewStatusPill } from '../components/ReviewStatusPill';
@@ -32,6 +34,10 @@ export function DocumentList() {
 
   return (
     <Stack gap="lg">
+      {/* The list page's sidebar content is the upload form. */}
+      <SidebarPortal>
+        <UploadForm />
+      </SidebarPortal>
       {docs.isPending && <Loader />}
       {docs.isError && (
         <Alert color="red" title="Could not load documents">

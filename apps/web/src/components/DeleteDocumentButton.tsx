@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { ApiRequestError, apiDelete, apiGet } from '../api';
 import { deleteSummary } from '../lib/versions';
+import { reviewColors } from '../theme';
 import { StatusPill } from './StatusPill';
 
 interface Props {
@@ -108,8 +109,14 @@ export function DeleteDocumentButton({
           <TrashIcon />
         </ActionIcon>
       ) : (
-        // A pastel-red pill with dark red text: stands apart from the black primary pills.
-        <Button color="red" variant="light" c="red.9" size="sm" onClick={open}>
+        // A solid pastel-red pill with dark red text (same pair as the failed status pill, 7.4:1):
+        // stands apart from the primary pills and reads on cream and on the charcoal sidebar.
+        <Button
+          size="compact-sm"
+          bg={reviewColors.failed.bg}
+          c={reviewColors.failed.fg}
+          onClick={open}
+        >
           Delete
         </Button>
       )}

@@ -11,6 +11,8 @@ interface Props {
   file: File | null;
   onChange: (file: File | null) => void;
   disabled?: boolean;
+  /** A ~44px strip with small text, for tight spots like the sidebar's "New version". */
+  compact?: boolean;
 }
 
 /**
@@ -19,7 +21,7 @@ interface Props {
  * Type and size are checked here for fast feedback, but the server still checks the
  * PDF magic bytes, because a file's MIME type is whatever the browser guesses.
  */
-export function PdfDrop({ label, file, onChange, disabled }: Props) {
+export function PdfDrop({ label, file, onChange, disabled, compact }: Props) {
   const [rejected, setRejected] = useState<string | null>(null);
 
   return (
@@ -38,8 +40,8 @@ export function PdfDrop({ label, file, onChange, disabled }: Props) {
           setRejected(dropRejectionMessage(rejections.flatMap((r) => r.errors.map((e) => e.code))));
         }}
         className="pdf-drop"
-        p="sm"
-        mih={56}
+        p={compact ? 'xs' : 'sm'}
+        mih={compact ? 44 : 56}
         style={{ display: 'flex', alignItems: 'center' }}
       >
         <Dropzone.Accept>
@@ -51,7 +53,7 @@ export function PdfDrop({ label, file, onChange, disabled }: Props) {
           </Text>
         </Dropzone.Reject>
         <Dropzone.Idle>
-          <Text size="sm" c={file ? undefined : 'dimmed'}>
+          <Text size={compact ? 'xs' : 'sm'} lh={1.3} c={file ? undefined : 'dimmed'}>
             {file ? file.name : 'Drag a PDF here, or click to choose'}
           </Text>
         </Dropzone.Idle>

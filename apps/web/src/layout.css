@@ -21,8 +21,8 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px 20px;
+  gap: 16px;
+  padding: 20px 18px;
   overflow-y: auto;
   border-radius: 20px;
   background: var(--sidebar-bg);
@@ -61,6 +61,52 @@
 .app-sidebar .upload-btn[data-disabled] {
   background: #46423c;
   color: #bdb5a8;
+}
+/* The per-page slot (see SidebarSlot.tsx). */
+.app-sidebar-slot {
+  min-width: 0;
+}
+/* Detail summary: blocks are slightly lighter charcoal panels (cream on #3A3631 is 10.9:1). */
+.summary-panel {
+  background: #3a3631;
+  border-radius: 14px;
+  padding: 12px;
+}
+/* Two-line clamp; the full title is in the element's title attribute. */
+.summary-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* Small back pill: cream text on a raised charcoal fill (10.9:1). */
+.back-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 4px 7px;
+  border-radius: 999px;
+  background: #3a3631;
+  border: 1px solid #4a463f;
+  color: #f6f1e7;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+/* Version pills: raised charcoal with cream text; the active one is cream with ink text. */
+.app-sidebar .version-pill {
+  background: #4a463f;
+  color: #f6f1e7;
+}
+.app-sidebar .version-pill:hover {
+  background: #57534b;
+}
+.app-sidebar .version-pill.version-pill-active,
+.app-sidebar .version-pill.version-pill-active:hover {
+  background: #f6f1e7;
+  color: #111111;
 }
 /* Pushes API health to the bottom when the form is short. */
 .app-sidebar-foot {

@@ -1,71 +1,20 @@
-import {
-  Alert,
-  Anchor,
-  Button,
-  Card,
-  Grid,
-  Group,
-  Loader,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Alert, Anchor, Button, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import type { DocumentDetailDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import { apiGet, apiPost } from '../api';
-import { DeleteDocumentButton } from '../components/DeleteDocumentButton';
+import { DocumentSummary } from '../components/DocumentSummary';
+import { SidebarPortal } from '../components/SidebarSlot';
 import { EvidencePanel } from '../components/EvidencePanel';
-import { ReviewRing } from '../components/ReviewRing';
-import { DocumentTypePill } from '../components/DocumentTypePill';
-import { ReviewStatusPill } from '../components/ReviewStatusPill';
-import { StatusPill } from '../components/StatusPill';
 import { ValueCard } from '../components/ValueCard';
-import { VersionBar } from '../components/VersionBar';
-import { progressLabel } from '../lib/format';
 import { pollInterval } from '../lib/poll';
-import { palette } from '../theme';
 import { groupValues } from '../lib/values';
 
 /**
- * Subtle pill back to the list. Always a plain link to `/` (never history), so it also works
- * when the page was opened directly. The arrow is inline SVG: no icon library.
+ * Detail page: the review content (status messages, value cards, evidence). The document's
+ * summary is portalled into the sidebar from here, so one query feeds both places.
  */
-function BackToList() {
-  return (
-    <Link
-      to="/"
-      style={{
-        alignSelf: 'flex-start',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '6px 14px 6px 10px',
-        borderRadius: 999,
-        border: `1px solid ${palette.line}`,
-        background: palette.surface,
-        color: palette.ink,
-        fontSize: 14,
-        fontWeight: 500,
-        textDecoration: 'none',
-      }}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path
-          d="M19 12H5M11 6l-6 6 6 6"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      All documents
-    </Link>
-  );
-}
-
-/** Detail page: header, status messages, and the value cards grouped by review need. */
 export function DocumentDetail() {
   const { id = '' } = useParams();
   const queryClient = useQueryClient();
@@ -92,12 +41,22 @@ export function DocumentDetail() {
     },
   });
 
-  if (doc.isPending) return <Loader />;
+  // While loading or failing, the sidebar slot shows the loader / error so the sidebar is
+  // never empty; the main panel stays blank until there is a document.
+  if (doc.isPending) {
+    return (
+      <SidebarPortal>
+        <Loader size="sm" color="gray" />
+      </SidebarPortal>
+    );
+  }
   if (doc.isError) {
     return (
-      <Alert color="red" title="Could not load document">
-        {doc.error.message}
-      </Alert>
+      <SidebarPortal>
+        <Alert color="red" title="Could not load document">
+          {doc.error.message}
+        </Alert>
+      </SidebarPortal>
     );
   }
 
@@ -119,44 +78,10 @@ export function DocumentDetail() {
 
   return (
     <Stack gap="lg">
-      <BackToList />
-      <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Stack gap={6}>
-          <Title order={1}>{d.title}</Title>
-          <Group gap="sm">
-            <DocumentTypePill type={d.type} />
-            <Text c="dimmed">v{d.version.versionNo}</Text>
-            {/* Review status only for the current version; older ones show the raw status. */}
-            {isCurrent ? (
-              <ReviewStatusPill status={d.status} progress={d.progress} />
-            ) : (
-              <StatusPill status={d.status} />
-            )}
-            <Text size="sm">{progressLabel(d.progress)}</Text>
-          </Group>
-        </Stack>
-        <DeleteDocumentButton
-          documentId={id}
-          title={d.title}
-          currentVersionNo={d.currentVersionNo}
-        />
-      </Group>
-
-      <Group gap="md" align="stretch" wrap="nowrap">
-        <Card p="lg" style={{ flexShrink: 0 }}>
-          <Text fw={600} fz="lg" mb="sm">
-            Review progress
-          </Text>
-          <ReviewRing progress={d.progress} />
-        </Card>
-        <Card p="lg" style={{ flex: 1, minWidth: 0 }}>
-          <VersionBar
-            documentId={id}
-            versionNo={d.version.versionNo}
-            currentVersionNo={d.currentVersionNo}
-          />
-        </Card>
-      </Group>
+      {/* Summary (title, progress, versions, delete) lives in the sidebar, not the main panel. */}
+      <SidebarPortal>
+        <DocumentSummary d={d} id={id} isCurrent={isCurrent} />
+      </SidebarPortal>
 
       {!isCurrent && (
         <Alert color="gray">

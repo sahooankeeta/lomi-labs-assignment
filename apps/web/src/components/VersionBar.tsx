@@ -21,7 +21,8 @@ interface Props {
  * Version switcher plus, on the current version only, the "Upload new version" control.
  * The shown version lives in the `?version=N` search param, so it survives reloads and links.
  * Versions are a row of filter pills (active one black) rather than a select, matching the
- * dashboard look; each pill's text still names the version and its status.
+ * dashboard look; each pill's text still names the version and its status. Compact: it lives
+ * in the sidebar (styles in layout.css).
  */
 export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
   const queryClient = useQueryClient();
@@ -57,20 +58,20 @@ export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
   };
 
   return (
-    <Stack gap="md">
+    <Stack gap="sm">
       <Stack gap={6}>
-        <Text fw={600} fz="lg" id="version-pills">
+        <Text fw={600} fz="sm" id="version-pills">
           Versions
         </Text>
-        <Group gap="xs" role="group" aria-labelledby="version-pills">
+        <Group gap={6} role="group" aria-labelledby="version-pills">
           {versionOptionsOrFallback(versions.data, versionNo, currentVersionNo).map((o) => {
             const active = o.value === String(versionNo);
             return (
               <Button
                 key={o.value}
-                size="xs"
-                variant={active ? 'filled' : 'white'}
-                c={active ? undefined : 'ink'}
+                size="compact-xs"
+                // Cream (active) vs raised charcoal (others) so both read on the sidebar.
+                className={active ? 'version-pill version-pill-active' : 'version-pill'}
                 aria-pressed={active}
                 onClick={() => !active && choose(o.value)}
               >
@@ -81,16 +82,19 @@ export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
         </Group>
       </Stack>
       {versionNo === currentVersionNo && (
-        <Group align="flex-end">
-          <PdfDrop label="New version" file={file} onChange={setFile} />
+        <Stack gap={8}>
+          <PdfDrop compact label="New version" file={file} onChange={setFile} />
           <Button
+            className="upload-btn"
+            size="xs"
+            fullWidth
             loading={upload.isPending}
             disabled={!file}
             onClick={() => file && upload.mutate(file)}
           >
             Upload new version
           </Button>
-        </Group>
+        </Stack>
       )}
       {upload.isError && (
         <Alert color="red" title="Upload failed">

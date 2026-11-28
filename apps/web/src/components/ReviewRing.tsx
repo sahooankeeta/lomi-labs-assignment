@@ -5,7 +5,7 @@ import { palette } from '../theme';
 /**
  * Review progress as a donut: approved / corrected / carried over / pending segments, with the
  * share reviewed in the middle and a legend that spells out every count, so the ring is never
- * the only carrier of the numbers. Built only from the detail response's `progress`.
+ * the only carrier of the numbers. Sized for the sidebar (88px ring, small legend). Built only from the detail response's `progress`.
  */
 export function ReviewRing({ progress }: { progress: ProgressDto }) {
   const { approved, corrected, carried_over: carried, pending, gaps, total } = progress;
@@ -29,33 +29,35 @@ export function ReviewRing({ progress }: { progress: ProgressDto }) {
   const reviewed = total === 0 ? null : Math.round(((total - pending) / total) * 100);
 
   return (
-    <Group gap="lg" wrap="nowrap" align="center">
+    <Group gap="sm" wrap="nowrap" align="center">
       <RingProgress
-        size={168}
-        thickness={22}
+        size={92}
+        thickness={11}
         roundCaps
-        sectionGap={sections.length > 1 ? 4 : 0}
-        rootColor="#fff"
+        sectionGap={sections.length > 1 ? 3 : 0}
+        rootColor="#4a463f"
         sections={sections}
         label={
           <Stack gap={0} align="center">
-            <Text fz={30} fw={500} lh={1} style={{ letterSpacing: -1 }}>
+            <Text fz={15} fw={600} lh={1}>
               {reviewed === null ? '—' : `${reviewed}%`}
             </Text>
-            <Text size="xs">reviewed</Text>
+            <Text fz={10} lh={1.2}>
+              reviewed
+            </Text>
           </Stack>
         }
       />
-      <Stack gap={6}>
+      <Stack gap={3}>
         {rows.map((r) => (
-          <Group key={r.label} gap="xs" wrap="nowrap">
-            <Box w={12} h={12} style={{ borderRadius: 999, background: r.color, flexShrink: 0 }} />
-            <Text size="sm">
+          <Group key={r.label} gap={6} wrap="nowrap">
+            <Box w={9} h={9} style={{ borderRadius: 999, background: r.color, flexShrink: 0 }} />
+            <Text fz={12} lh={1.3}>
               {r.label}: <b>{r.count}</b>
             </Text>
           </Group>
         ))}
-        <Text size="xs" c="dimmed">
+        <Text fz={11} c="dimmed">
           {total} fields{gaps > 0 ? ` · ${gaps} gaps` : ''}
         </Text>
       </Stack>
