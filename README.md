@@ -1,10 +1,10 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: all four phases done.** Ingest and extraction, review, versions with review carry-over, and hardening. `scripts/verify-phase1.sh` and `scripts/chaos.sh` break the running compose stack (restart and SIGKILL mid-extraction, Redis `FLUSHALL` plus restart, double upload, v2 during v1, delete mid-extraction) and check the end state through the API. See [Verify](#verify). Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
+This app pulls structured fields out of uploaded PDFs and shows each one to a person to check. A background worker sends the parsed text to Google Gemini (or a deterministic fake extractor). It keeps a value only when the value's quoted evidence appears in the text; otherwise it records a gap with a reason. A reviewer approves or corrects each value beside its quote. When a new version of a document is uploaded, a review carries over only if both the value and its quote are unchanged. Job state lives in Postgres, so extraction resumes after a worker restart, a Redis flush or a superseding upload.
 
-PDFs go in, an LLM (Google Gemini; a fake extractor for tests) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
+**What has been verified, and how:** unit and Postgres integration tests ([Checks](#checks)); `scripts/verify-phase1.sh` and `scripts/chaos.sh` against the compose stack using the fake extractor (last run 2026-11-28, all checks passed, see [Verify](#verify)); and one live Gemini run on the three bundled fixtures (16/16 fields, 2026-11-27). **What has not:** the UI has no scripted tests (it was clicked through by hand), Gemini was tried on only three short documents, and there is no auth, OCR or deployment ([What I cut](#what-i-cut-and-whats-next)). Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
-> The spec named Claude. The project owner removed it to avoid a paid API, so Gemini (free tier) is the only real provider. Adding another is one `Extractor` implementation plus a factory branch.
+> The spec named Claude. The project owner removed it to avoid a paid API, so Gemini (free tier) is the only real provider.
 
 ## Run it
 
@@ -258,7 +258,78 @@ History: an earlier run (before the numeric fix) was 15/16. The lease `term_mont
 
 ## Schema
 
-Full model in `packages/db/prisma/schema.prisma`.
+Full model in `packages/db/prisma/schema.prisma`. Key columns only below; lease, token and timestamp columns are left out.
+
+```mermaid
+erDiagram
+    documents ||--o{ document_versions : "has versions"
+    documents |o--o| document_versions : "current_version_id"
+    document_versions ||--o{ extraction_runs : "attempts"
+    document_versions ||--o{ version_chunks : "chunk plan"
+    document_versions ||--o{ chunk_results : "LLM answers"
+    document_versions ||--o{ extracted_values : "one per field"
+    extracted_values ||--o{ reviews : "append-only history"
+    extracted_values |o--o{ extracted_values : "previous_value_id"
+    reviews |o--o{ extracted_values : "carried_review_id"
+
+    documents {
+        uuid id PK
+        document_type type
+        text title
+        uuid current_version_id FK, UK "nullable"
+    }
+    document_versions {
+        uuid id PK
+        uuid document_id FK "unique with version_no"
+        int version_no
+        text file_key "sha256.pdf"
+        text sha256
+        version_status status
+        text parsed_text "never rewritten"
+        uuid active_run_id "lease owner"
+        timestamptz lease_expires_at
+    }
+    extraction_runs {
+        uuid id PK
+        uuid version_id FK
+        run_status status
+        text model
+        text error
+    }
+    version_chunks {
+        uuid version_id PK, FK
+        int chunk_index PK
+        int start
+        int end
+        int tokens
+    }
+    chunk_results {
+        uuid version_id PK, FK
+        int chunk_index PK
+        text prompt_version PK
+        uuid run_id
+        jsonb raw_response
+        jsonb candidates
+    }
+    extracted_values {
+        uuid id PK
+        uuid version_id FK "unique with field"
+        text field
+        text value "null means gap"
+        text evidence
+        text gap_reason "CHECK value_xor_gap"
+        uuid previous_value_id FK
+        uuid carried_review_id FK
+    }
+    reviews {
+        uuid id PK
+        uuid value_id FK
+        review_action action "approve or correct"
+        text corrected_value "required when action is correct"
+        text note
+        timestamptz created_at
+    }
+```
 
 - `documents` → has many `document_versions`. Each version stores its file key, sha256, **parsed text** (never rewritten), page offsets, status, and the lease fields the worker uses to claim it.
 - `extraction_runs`: one per attempt (`running | succeeded | failed | abandoned`).
