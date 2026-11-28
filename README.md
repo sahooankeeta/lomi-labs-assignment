@@ -238,6 +238,8 @@ bash scripts/chaos.sh                # the brief's failure scenarios, end state 
 
 `chaos.sh` runs, in order: (A) worker restart mid-extraction; (B) `FLUSHALL` plus restart of worker and api mid-extraction; (C) re-upload of B's file after the restart (200, same id, still one version); (D) v2 uploaded while v1 is extracting (v1 `superseded` with no values, v2 extracted with no previous links); (E) delete mid-extraction (404, and the next upload still extracts); (F) a sweep that every document is `extracted` with the expected value count and no field twice. Each check prints PASS or FAIL. Checks that depend on a break (for example "was extracting before the restart") fail if the break didn't happen, so nothing passes by accident.
 
+Last run on 2026-11-28 against the compose images (fake extractor, 15 s delay): all 10 checks passed, `ALL CHECKS PASSED`.
+
 The script needs bash (Git Bash on Windows), `curl`, `node` and `docker compose`, and the worker running with the fake extractor (it fails fast otherwise). It checks: the three seeded documents extract; a worker restart mid-extraction; a double upload (200, same id, one row); `FLUSHALL` plus restart of worker and api; `SIGKILL` of the worker (lease recovery); no duplicate values per version. When it ends (pass or fail) it restores the worker to your normal settings (`env -u EXTRACTOR -u FAKE_EXTRACTOR_DELAY_MS docker compose up -d worker`, i.e. from `.env` and compose defaults); a failure of that step does not change the exit code.
 
 ### Live extraction check
