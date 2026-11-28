@@ -2,41 +2,20 @@
 
 This app pulls structured fields out of uploaded PDFs and shows each one to a person to check. A background worker sends the parsed text to Google Gemini (or a deterministic fake extractor). It keeps a value only when the value's quoted evidence appears in the text; otherwise it records a gap with a reason. A reviewer approves or corrects each value beside its quote. When a new version of a document is uploaded, a review carries over only if both the value and its quote are unchanged. Job state lives in Postgres, so extraction resumes after a worker restart, a Redis flush or a superseding upload.
 
-**What has been verified, and how:** unit and Postgres integration tests ([Checks](#checks)); `scripts/verify-phase1.sh` and `scripts/chaos.sh` against the compose stack using the fake extractor (last run 2026-11-28, all checks passed, see [Verify](#verify)); and two live Gemini runs on the three bundled fixtures (16/16 fields each, 2026-11-27 and 2026-11-28). **What has not:** the UI has no scripted tests (it was clicked through by hand), Gemini was tried on only three short documents, and there is no auth, OCR or deployment ([What I cut](#what-i-cut-and-whats-next)). Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
-
-> The spec named Claude. The project owner removed it to avoid a paid API, so Gemini (free tier) is the only real provider.
+Results: [Verify](#verify). Design spec: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md).
 
 ## Run it
 
 ```sh
-cp .env.example .env        # then set a key, see below
-docker compose up --build
+cp .env.example .env        # set GEMINI_API_KEY (free: https://aistudio.google.com/apikey), or EXTRACTOR=fake for offline
+docker compose up --build   # low on memory: for s in migrate api worker web; do docker compose build $s; done
 ```
 
-Pick the extractor in `.env` (compose passes these to the worker):
-
-- **Gemini (the default, free tier):** set `GEMINI_API_KEY=...` (key from https://aistudio.google.com/apikey); `EXTRACTOR` can stay unset. Without a key every version fails visibly with `GEMINI_API_KEY is not set` and can be retried.
-- **Fake (offline, no key):** `EXTRACTOR=fake`, optional `FAKE_EXTRACTOR_DELAY_MS=15000`. Deterministic values from the fixtures.
-
-After changing `.env`, run `docker compose up -d worker` to recreate the worker.
-
-**Low on memory?** Build one service at a time instead of one parallel build:
-
-```sh
-for s in migrate api worker web; do docker compose build $s; done
-docker compose up -d
-```
-
-- Web UI: http://localhost:8080
-- API: http://localhost:3000/health
-
-Compose starts Postgres and Redis, runs migrations, seeds version 1 of each fixture, and then starts the api, worker, and web services.
-
-**No Gemini key?** Run `EXTRACTOR=fake docker compose up --build` instead. The fake extractor returns deterministic values for the fixtures and needs no network.
+Compose starts Postgres and Redis, runs migrations, seeds version 1 of each fixture, then starts the api (http://localhost:3000/health), worker and web (http://localhost:8080). Without a key every version fails visibly with `GEMINI_API_KEY is not set` and can be retried. After changing `.env`, run `docker compose up -d worker`; after code changes, rebuild the images.
 
 ### What to click first
 
-1. Open http://localhost:8080. The three seeded documents go from Queued to Extracting to In review while the list polls.
+1. Open http://localhost:8080. The three seeded documents go from Queued to Extracting to In review while the list polls. (In review and Approved are derived by the UI from the API's version status and the pending count.)
 2. Open the **invoice**. Each value sits beside its quote. Click a value to jump to its passage in the PDF; the Text tab highlights the quote. Approve a few values and correct one (with a note).
 3. In the sidebar, **Upload new version** and pick `fixtures/documents/invoice-001.v2.pdf`. When it finishes, only `due_date` and `total_amount` are under Needs review, each showing its v1 value and review. The other three are Carried over.
 4. Open the **market report**. `median_household_income` is a gap with its reason. Confirm it absent.
@@ -55,20 +34,6 @@ pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
 
 Relative `UPLOAD_DIR` and `FIXTURES_DIR` (the `./uploads` and `./fixtures` in `.env.example`) resolve against the repo root, not each app's folder, so the api, worker and seed share one `uploads/`. Absolute paths (compose uses `/data/uploads`) are used as given.
 
-### Checks
-
-```sh
-pnpm -r run build && pnpm -r run typecheck && pnpm -r run lint && pnpm -r run test
-pnpm --filter @lomi/db test:integration   # needs Postgres; uses TEST_DATABASE_URL
-pnpm --filter @lomi/api test:integration  # needs Postgres; run after (not alongside) the db suite, they share lomi_test
-pnpm --filter @lomi/worker test:integration # needs Postgres, no Redis, fake extractor only; run alone (shares lomi_test)
-pnpm --filter @lomi/worker smoke:gemini   # check a Gemini key: lists models, one extraction on the invoice; needs GEMINI_API_KEY (free tier)
-```
-
-(`pnpm turbo …` does the same where Windows Application Control doesn't block the turbo binary.)
-
-Unit tests (`*.test.ts`) need nothing running. Integration tests (`*.int.test.ts`) read `TEST_DATABASE_URL` from `.env`, create that database if it's missing, apply migrations, and truncate tables between tests; they never touch the dev database.
-
 ### Extractor settings (worker)
 
 | Variable                  | Default                    | Effect                                                                                                                                                                        |
@@ -78,15 +43,14 @@ Unit tests (`*.test.ts`) need nothing running. Integration tests (`*.int.test.ts
 | `GEMINI_API_KEY`          | none                       | Required unless `EXTRACTOR=fake` (free tier: https://aistudio.google.com/apikey). Missing: the worker still starts, but every version fails with `GEMINI_API_KEY is not set`. |
 | `GEMINI_MODEL`            | `gemini-3.6-flash`         | Primary Gemini model.                                                                                                                                                         |
 | `GEMINI_FALLBACK_MODELS`  | `gemini-flash-lite-latest` | Comma-separated models tried in order when the primary is busy (429/503/timeout twice) or retired (404).                                                                      |
-| `EXTRACTOR=fake`          | unset                      | Deterministic offline extractor for tests/e2e; ignores the API keys.                                                                                                          |
 | `FAKE_EXTRACTOR_DELAY_MS` | `0`                        | Simulated latency per fake extraction.                                                                                                                                        |
 | `CHUNK_CONCURRENCY`       | `3`                        | Chunks of one document extracted at once.                                                                                                                                     |
 
-The Gemini extractor runs on Google's free tier, which has rate limits and models that are sometimes overloaded: a busy model is retried once, then the next fallback model is used, and stored results record which model answered. Token counts are a local estimate (length / 4), so Gemini uses no quota for them. Answers go through the same evidence check as the fake's.
+Stored results record which model answered. Token counts are a local estimate (length / 4), so they use no Gemini quota.
 
 ## API
 
-Errors are always `{ "error": "<code>", "message": "..." }`. The api only validates, writes to Postgres and enqueues a hint; it never parses PDFs or calls the LLM.
+Errors are always `{ "error": "<code>", "message": "..." }`.
 
 | Route                          | Success                                                                                                                                                    | Errors                                                                                                                                                             |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -108,14 +72,6 @@ curl -F type=invoice -F file=@fixtures/documents/invoice-001.pdf localhost:3000/
 curl localhost:3000/documents/<uuid>
 curl -X POST localhost:3000/documents/<uuid>/retry
 ```
-
-## Review UI
-
-The walkthrough is in [What to click first](#what-to-click-first). The review model and the choice of Mantine are in [0008](docs/decisions/0008-reviews.md), and delete in [0010](docs/decisions/0010-document-delete.md).
-
-- **Status pills** are a review status the UI derives itself, on top of the API's fixed version statuses: Queued, Extracting, Failed, In review (extracted, values pending) and Approved (nothing pending). Older versions show the raw status.
-- **Where it was checked:** the full flow was clicked through on the dev server (`pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, http://localhost:5173). On the compose stack (http://localhost:8080) only the pdf.js worker's content type and the `/api/documents` JSON were checked.
-- **After code changes**, rebuild the compose images one service at a time (`docker compose build api`, then `worker`, `web`, `migrate`), then `docker compose up -d`. Otherwise :8080 serves the old UI.
 
 ## Versions and carry-over
 
@@ -149,25 +105,12 @@ Code: `isUnchanged` (`packages/extraction/src/carry.ts`), `carryLinks` inside `f
 - Gaps never carry: a gap has no quote, so "still absent" cannot be verified, and the model may have missed a value that v2 now states.
 - The baseline is the latest extracted older version, because superseded and failed versions have no values to compare.
 
-Uploading a new version supersedes any older version that is still queued or extracting. Details in [0009](docs/decisions/0009-versions-and-carry-over.md).
-
 ## Worker
 
 Postgres is the truth; BullMQ jobs are only hints (`{ versionId }`). A job runs `processVersion`:
 claim (lease) -> parse the PDF once and store the text -> plan chunks -> extract each missing chunk
 (3 at a time) -> merge -> finish. Finish also links each value to the previous version's value for the same field and carries that value's review when its evidence is unchanged. Every write is guarded by the run id, so a run that lost its lease
-writes nothing. The lease is renewed on its own timer, so a slow LLM call cannot lose it.
-
-| Event                           | What happens                                                                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Worker killed / restart         | Lease expires (30 s); the reconciler (every 10 s) re-enqueues; the next run reuses stored text and chunk results.                     |
-| SIGTERM                         | In-flight runs stop, the version goes back to `queued` without spending an attempt, and the next reconciler pass (≤ 10 s) resumes it. |
-| Redis `FLUSHALL`                | Jobs vanish; the reconciler re-adds every `queued` or expired version from Postgres within 10 s.                                      |
-| Missing key                     | Version `failed` with `GEMINI_API_KEY is not set`; `POST /documents/:id/retry` once it is set.                                        |
-| Scanned PDF / too long          | Version `failed` with a clear message (`No text layer found...`, `Document too long (N chunks; limit 50)`).                           |
-| Document deleted mid-extraction | The run's next ownership check (before each chunk) or lease renewal (≤ 10 s) fails; it writes nothing more and ends stale.            |
-
-Env: `EXTRACTOR` (`gemini` default, `fake`), `GEMINI_API_KEY` / `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `LLM_MAX_INFLIGHT`, `CHUNK_CONCURRENCY` (default 3), `UPLOAD_DIR`, `FIXTURES_DIR`, `REDIS_URL`, `DATABASE_URL`.
+writes nothing. The lease is renewed on its own timer, so a slow LLM call cannot lose it. A reconciler re-enqueues every `queued` or expired-lease version from Postgres every 10 s, so lost jobs (crash, `FLUSHALL`) and failed enqueues repair themselves. How each failure ends: [Critical scenarios](#critical-scenarios).
 
 ## Layout
 
@@ -218,6 +161,21 @@ fixtures/      Sample PDFs and manifests from the assignment.
 
 ## Verify
 
+### Tests
+
+```sh
+pnpm build && pnpm typecheck && pnpm lint && pnpm test   # turbo pipeline; unit tests of every package, web included
+pnpm --filter @lomi/web test                # web only: apps/web/src/lib logic (no component or browser tests)
+pnpm --filter @lomi/db test:integration     # needs Postgres (TEST_DATABASE_URL)
+pnpm --filter @lomi/api test:integration    # needs Postgres; run after the db suite (they share lomi_test)
+pnpm --filter @lomi/worker test:integration # needs Postgres, fake extractor only; run alone
+pnpm --filter @lomi/worker smoke:gemini     # checks a Gemini key: lists models, extracts the invoice once
+```
+
+Unit tests need nothing running. Integration tests create and migrate `TEST_DATABASE_URL` themselves and never touch the dev database. Where Windows Application Control blocks the turbo binary, use `pnpm -r run <task>`.
+
+### Scripts
+
 ```sh
 EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 docker compose up -d   # build services one at a time first
 bash scripts/verify-phase1.sh   # seeded docs, restart, double upload, FLUSHALL, SIGKILL, no duplicate values
@@ -228,28 +186,22 @@ Both need bash (Git Bash on Windows), `curl`, `node`, `docker compose` and the w
 
 ### Critical scenarios
 
-Last run 2026-11-28: unit 210/210, integration 154/154 (db 85, api 49, worker 20), `verify-phase1.sh` 9/9, `chaos.sh` 10/10. Each scenario below is covered by those tests and scripts; the list after the table says what they leave out.
+Last run 2026-11-28: unit 210/210, integration 154/154 (db 85, api 49, worker 20), `verify-phase1.sh` 9/9, `chaos.sh` 10/10. Each scenario below is covered by those tests and scripts. The UI has no scripted tests (see [What I cut](#what-i-cut-and-whats-next)).
 
-| Scenario                    | Expected behavior                                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Worker crash mid-extraction | Lease (30 s) expires, reconciler re-enqueues, a new run finishes; the dead run can't write; 3 interruptions → `failed`         |
-| Redis `FLUSHALL`            | Postgres is the truth; reconciler (≤ 10 s) re-enqueues and extraction completes                                                |
-| Duplicate upload            | 200, same id, one version, no second enqueue                                                                                   |
-| Duplicate extraction job    | One run claims, the other is `skipped`; a stale run can't write                                                                |
-| LLM failure and retry       | 429/503/timeout: one retry, then fallback model, then `failed`; `POST /retry` re-runs only missing chunks; no automatic re-run |
-| v2 while v1 is extracting   | v2 current; v1 `superseded` with no values; v2 has no previous links                                                           |
-| Changed evidence            | `pending`, linked to the previous value, review not carried                                                                    |
-| Unchanged evidence          | `carried_over`, including corrections and v1 → v2 → v3 chains                                                                  |
-| Missing fields              | `value = null` with a gap reason, also for conflicting or hallucinated values                                                  |
-| Delete mid-extraction       | 204, then 404; the run stops, writes nothing and frees its slot                                                                |
-
-Not covered:
-
-- **Worker crash mid-extraction:** the 3-attempt cap is tested in the DB code only, not by real repeated crashes.
-- **Redis FLUSHALL:** the wipe itself is E2E only.
-- **Duplicate extraction job:** two direct calls, not two real BullMQ deliveries.
-- **LLM failure and retry:** no live Gemini outage tested.
-- **Missing fields:** how the UI shows a gap (there are no UI tests).
+| Scenario                             | Expected behavior                                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Worker crash mid-extraction          | Lease (30 s) expires, reconciler re-enqueues, a new run finishes; the dead run can't write; 3 interruptions → `failed`         |
+| Worker restart (SIGTERM)             | The run hands the version back to `queued` without spending an attempt; the next reconciler pass resumes it                    |
+| Missing key, scanned or too-long PDF | `failed` with a clear message (`GEMINI_API_KEY is not set`, `No text layer found…`, `Document too long…`); retryable           |
+| Redis `FLUSHALL`                     | Postgres is the truth; reconciler (≤ 10 s) re-enqueues and extraction completes                                                |
+| Duplicate upload                     | 200, same id, one version, no second enqueue                                                                                   |
+| Duplicate extraction job             | One run claims, the other is `skipped`; a stale run can't write                                                                |
+| LLM failure and retry                | 429/503/timeout: one retry, then fallback model, then `failed`; `POST /retry` re-runs only missing chunks; no automatic re-run |
+| v2 while v1 is extracting            | v2 current; v1 `superseded` with no values; v2 has no previous links                                                           |
+| Changed evidence                     | `pending`, linked to the previous value, review not carried                                                                    |
+| Unchanged evidence                   | `carried_over`, including corrections and v1 → v2 → v3 chains                                                                  |
+| Missing fields                       | `value = null` with a gap reason, also for conflicting or hallucinated values                                                  |
+| Delete mid-extraction                | 204, then 404; the run stops, writes nothing and frees its slot                                                                |
 
 ### Live extraction check
 
@@ -261,15 +213,13 @@ Gemini free tier, `gemini-3.6-flash`, the three fixtures uploaded fresh; one att
 | lease         | 42 s / 37 s          | `tenant_name` Dana Okafor, `monthly_rent` $2,350.00, `security_deposit` $3,525.00, `lease_start` March 1, 2025, `term_months` 24                                                                                                        |
 | market report | 33 s / 120 s         | `report_quarter` Q3 2025, `market_area` Eastport-Harborview Submarket, `vacancy_rate` 4.2%, `average_rent_1br` $1,985, `year_over_year_rent_growth` 3.8%, `median_household_income` **gap** (not in the report; the model didn't guess) |
 
-An earlier run was 15/16 (`term_months` came back as "twenty-four (24)"), fixed in `e5dd89f` ([0007](docs/decisions/0007-numeric-values.md)). If every model is busy, the version goes `failed` and `POST /documents/:id/retry` re-runs only the missing chunks.
-
 ## Schema
 
 Full model in `packages/db/prisma/schema.prisma`. Key columns only below; lease, token and timestamp columns are left out.
 
 ![Schema ER diagram](docs/schema-er.png)
 
-Diagram source: [`docs/schema-er.mmd`](docs/schema-er.mmd) (Mermaid). The PNG is rendered from it with Mermaid 11, because GitHub fails to render this diagram inline ("Unable to render rich display").
+Source: [`docs/schema-er.mmd`](docs/schema-er.mmd) (GitHub can't render it inline, so the PNG is rendered with Mermaid 11).
 
 - `documents` → has many `document_versions`. Each version stores its file key, sha256, **parsed text** (never rewritten), page offsets, status, and the lease fields the worker uses to claim it.
 - `extraction_runs`: one per attempt (`running | succeeded | failed | abandoned`).
@@ -280,7 +230,7 @@ Diagram source: [`docs/schema-er.mmd`](docs/schema-er.mmd) (Mermaid). The PNG is
 
 ## Decisions
 
-Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values, reviews ([0008](docs/decisions/0008-reviews.md)), versions and carry-over ([0009](docs/decisions/0009-versions-and-carry-over.md)).
+Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values, reviews ([0008](docs/decisions/0008-reviews.md)), versions and carry-over ([0009](docs/decisions/0009-versions-and-carry-over.md)), document delete ([0010](docs/decisions/0010-document-delete.md)).
 
 ## Open decisions the brief left
 
@@ -292,7 +242,6 @@ Short notes (context, decision, alternatives, consequences) in [`docs/decisions/
 | New version during an extraction | Supersede: the new version becomes current; the older unfinished one ends `superseded`        | The reviewer only cares about the latest file. Rejecting makes the client retry; queueing spends LLM calls on a version nobody will review. The old run notices at its next ownership check and writes nothing ([0009](docs/decisions/0009-versions-and-carry-over.md)).                  |
 | UI updates                       | Polling every 2 s, **only while** a shown version is `queued` or `extracting`; otherwise none | Status changes a few times per document and extraction takes seconds to a minute, so a 2 s poll feels live. An idle page sends no requests. SSE or WebSockets would need a pub/sub path from worker to api and reconnect handling, for no visible gain here (`apps/web/src/lib/poll.ts`). |
 | Identical re-upload              | `200` with the existing document or version (matched by sha256)                               | Covers the impatient double click without a second extraction.                                                                                                                                                                                                                            |
-| Gaps across versions             | Never carry over                                                                              | "Still absent" can't be checked against a quote, and v2 may now state the value.                                                                                                                                                                                                          |
 
 ## What I cut, and what's next
 
@@ -303,7 +252,7 @@ Cut for time:
 - **Other LLM providers.** Only Gemini (free tier) plus the fake. Another provider is one `Extractor` class plus a factory branch.
 - **OCR.** A scanned PDF with no text layer fails with a clear message instead of being OCR'd.
 - **Deployment.** No live link. The stack runs locally only.
-- **Browser e2e tests.** The UI was clicked through by hand. The API, worker and chaos scenarios are scripted, but nothing scripted drives the UI.
+- **Browser e2e tests.** The UI was clicked through by hand on the dev server (:5173); on the compose stack (:8080) only the asset and API responses were checked. The API, worker and chaos scenarios are scripted, but nothing scripted drives the UI.
 
 ## At 10,000 documents
 
