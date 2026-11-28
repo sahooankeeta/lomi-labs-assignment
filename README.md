@@ -11,6 +11,8 @@ cp .env.example .env        # set GEMINI_API_KEY (free: https://aistudio.google.
 docker compose up --build   # low on memory: for s in migrate api worker web; do docker compose build $s; done
 ```
 
+Instead of copying `.env.example`, you can use the ready-made `.env` from the shared Google Drive folder: put it in the repo root and change any values as needed.
+
 Compose starts Postgres and Redis, runs migrations, seeds version 1 of each fixture, then starts the api (http://localhost:3000/health), worker and web (http://localhost:8080). Without a key every version fails visibly with `GEMINI_API_KEY is not set` and can be retried. After changing `.env`, run `docker compose up -d worker`; after code changes, rebuild the images.
 
 ### What to click first
@@ -22,11 +24,12 @@ Compose starts Postgres and Redis, runs migrations, seeds version 1 of each fixt
 
 ### Without Docker (local dev)
 
-You need Postgres (16+; a native Windows Postgres 19 service works) and Redis 7 running locally, or point `DATABASE_URL` / `REDIS_URL` in `.env` at hosted ones. Any role that can create databases works (e.g. `postgresql://postgres:<password>@localhost:5432/lomi`); create the `lomi` database once with `CREATE DATABASE lomi`.
+You need Node 22+ with pnpm (`corepack enable` installs the version pinned in `package.json`), Postgres (16+; a native Windows Postgres 19 service works) and Redis 7 running locally, or point `DATABASE_URL` / `REDIS_URL` in `.env` at hosted ones. Any role that can create databases works (e.g. `postgresql://postgres:<password>@localhost:5432/lomi`); create the `lomi` database once with `CREATE DATABASE lomi`.
 
 A native Postgres on port 5432 and the compose `postgres` service both want host port 5432: stop one before starting the other.
 
 ```sh
+corepack enable   # once: provides the pinned pnpm
 pnpm install
 pnpm db:seed      # builds deps, runs migrations, then seeds
 pnpm dev          # api :3000, worker, web :5173 (proxies /api -> :3000)
