@@ -118,7 +118,7 @@ The status pill is a UI-only review status derived on the client (the API's vers
 
 The UI uses Mantine; the review model and that choice are in [0008](docs/decisions/0008-reviews.md).
 
-Styling: a Mantine theme (`apps/web/src/theme.ts`) inspired by a pastel dashboard look: a cream page, a slim top bar holding the brand link and API health, pastel stat cards on the list, a review-progress ring on the detail page, pill statuses that always carry their text, and black pill buttons. No extra font or icon dependency.
+Styling: a Mantine theme (`apps/web/src/theme.ts`) inspired by a pastel dashboard look: a cream page, a fixed black sidebar holding the upload form and API health, a review-progress ring on the detail page, pill statuses that always carry their text, and black pill buttons. No extra font or icon dependency.
 
 ## Versions and carry-over
 

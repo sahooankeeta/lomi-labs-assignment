@@ -17,53 +17,12 @@ import { apiGet } from '../api';
 import { DeleteDocumentButton } from '../components/DeleteDocumentButton';
 import { DocumentTypePill } from '../components/DocumentTypePill';
 import { ReviewStatusPill } from '../components/ReviewStatusPill';
-import { StatCard, StatIcons } from '../components/StatCard';
 import { progressLabel } from '../lib/format';
 import { pollInterval } from '../lib/poll';
 import { palette } from '../theme';
 import './documentTable.css';
 
-/**
- * The three pastel tiles above the table, counted client-side from the list already fetched
- * (no extra request): documents, values still pending review, and versions still extracting.
- */
-function ListStats({ docs }: { docs: DocumentListItemDto[] }) {
-  const pending = docs.reduce((n, d) => n + d.progress.pending, 0);
-  const docsWithPending = docs.filter((d) => d.progress.pending > 0).length;
-  const running = docs.filter((d) => d.status === 'queued' || d.status === 'extracting').length;
-  const ready = docs.filter((d) => d.status === 'extracted').length;
-
-  return (
-    <Group gap="md" align="stretch">
-      <StatCard
-        bg={palette.blush}
-        icon={StatIcons.documents}
-        label="Documents"
-        value={docs.length}
-        caption="Total uploaded documents"
-        chip={`${ready} extracted`}
-      />
-      <StatCard
-        bg={palette.sky}
-        icon={StatIcons.review}
-        label="Needs review"
-        value={pending}
-        caption="Values waiting for a decision"
-        chip={`in ${docsWithPending} ${docsWithPending === 1 ? 'doc' : 'docs'}`}
-      />
-      <StatCard
-        bg={palette.butter}
-        icon={StatIcons.clock}
-        label="Extracting"
-        value={running}
-        caption="Documents queued or extracting"
-        chip={running > 0 ? 'updating live' : 'all settled'}
-      />
-    </Group>
-  );
-}
-
-/** Home page: upload column plus stats and the document table, polling while extractions run. */
+/** Home page: the document table (upload lives in the sidebar), polling while extractions run. */
 export function DocumentList() {
   const docs = useQuery({
     queryKey: ['documents'],
@@ -73,7 +32,6 @@ export function DocumentList() {
 
   return (
     <Stack gap="lg">
-      {docs.data && <ListStats docs={docs.data} />}
       {docs.isPending && <Loader />}
       {docs.isError && (
         <Alert color="red" title="Could not load documents">
