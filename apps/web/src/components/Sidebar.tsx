@@ -52,6 +52,9 @@ function UploadForm() {
           value={type}
           onChange={setType}
           required
+          // The options list renders in a portal (outside the sidebar), so it is styled by class
+          // to match the cream fields instead of Mantine's white (layout.css).
+          classNames={{ dropdown: 'field-dropdown', option: 'field-option' }}
         />
         <TextInput
           label="Title (optional)"

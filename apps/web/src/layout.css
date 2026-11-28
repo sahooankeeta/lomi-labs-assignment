@@ -82,7 +82,22 @@
 }
 
 /* Every PDF drop area (sidebar upload and the detail page's "New version") uses the same cream
-   field colour as the inputs, so no upload field shows white. */
-.pdf-drop {
+   field colour as the inputs, so no upload field shows white. No hover colour either: the other
+   fields have none, and Mantine's default hover only showed outside the sidebar (where this
+   rule was less specific), so the two drop areas behaved differently. The doubled class beats
+   Mantine's own :hover selector regardless of stylesheet order. */
+.pdf-drop.pdf-drop,
+.pdf-drop.pdf-drop:hover {
+  background-color: #f6f1e7;
+}
+
+/* The document-type options list: the same cream as the fields, with a surface-grey row for
+   the hovered / keyboard-highlighted option (ink text on it is 15.3:1). */
+.field-dropdown {
   background: #f6f1e7;
+  border-color: #ddd5c7;
+}
+.field-option:hover,
+.field-option[data-combobox-selected] {
+  background: #ece7de;
 }
