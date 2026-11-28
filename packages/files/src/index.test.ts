@@ -53,4 +53,18 @@ describe('LocalFileStore', () => {
     await expect(store.read('../x.pdf')).rejects.toThrow('Invalid file key');
     expect(() => store.stream('missing.pdf')).toThrow('Invalid file key');
   });
+
+  it('remove deletes a stored file', async () => {
+    const { key } = await store.put(bytes);
+    await store.remove(key);
+    await expect(store.read(key)).rejects.toThrow();
+  });
+
+  it('remove of a missing key resolves', async () => {
+    await expect(store.remove(`${'0'.repeat(64)}.pdf`)).resolves.toBeUndefined();
+  });
+
+  it('remove rejects an invalid key', async () => {
+    await expect(store.remove('../x.pdf')).rejects.toThrow(/Invalid file key/);
+  });
 });
