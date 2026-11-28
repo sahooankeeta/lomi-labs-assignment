@@ -25,13 +25,15 @@ interface Props {
   canReview: boolean;
   /** The document id, to refresh its detail query after a review. */
   documentId: string;
+  /** False hides the "page N" label: on a one-page PDF it says nothing. */
+  showPage: boolean;
 }
 
 /**
  * One extracted field: its value and evidence page, gap reason, review state, and the
  * Approve / Correct actions. Each action is sent immediately as one review (no drafts).
  */
-export function ValueCard({ value, selected, onSelect, canReview, documentId }: Props) {
+export function ValueCard({ value, selected, onSelect, canReview, documentId, showPage }: Props) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -105,7 +107,7 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
             ) : (
               <Text>{value.value}</Text>
             )}
-            {value.evidencePage !== null && (
+            {showPage && value.evidencePage !== null && (
               <Text size="sm" fs="italic" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
                 page {value.evidencePage}
               </Text>

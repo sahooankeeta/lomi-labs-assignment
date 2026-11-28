@@ -51,11 +51,14 @@
   background: #f6f1e7;
   color: #111111;
 }
-/* Upload: cream pill with ink text on charcoal; muted (not invisible) when disabled. */
+/* Upload: cream pill with ink text on charcoal; muted (not invisible) when disabled.
+   The text colour is set directly, not via --button-color: Mantine writes
+   `--button-color: white` as an inline style on filled buttons, which beats any stylesheet
+   value for the variable and left white text on the cream pill. */
 .app-sidebar .upload-btn {
   --button-bg: #f6f1e7;
   --button-hover: #fbf8f2; /* lighter cream, not white */
-  --button-color: #111111;
+  color: #111111;
 }
 .app-sidebar .upload-btn:disabled,
 .app-sidebar .upload-btn[data-disabled] {
@@ -106,18 +109,21 @@
   padding: 0;
   list-style: none;
 }
+/* Dots sit at the start of their slot (not centred) so the first one lines up with the
+   "Versions" heading instead of floating half a slot in. */
 .version-step {
   position: relative;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
 }
-/* The connector from the previous dot's centre to this one's (none before the first). */
+/* The connector from the previous dot's centre to this one's (none before the first). A dot
+   is 36px wide, so its centre is 18px into its slot; the previous slot is one slot (100%) left. */
 .version-step + .version-step::before {
   content: '';
   position: absolute;
   top: 50%;
-  left: -50%;
-  right: 50%;
+  left: calc(-100% + 18px);
+  right: calc(100% - 18px);
   height: 2px;
   margin-top: -1px;
   background: #cfc7b8;

@@ -12,9 +12,12 @@ import '../pdf';
 export function EvidencePanel({
   version,
   selected,
+  onPageCount,
 }: {
   version: VersionDto;
   selected: ValueDto | null;
+  /** Called with the PDF's page count once it loads (the API does not send one). */
+  onPageCount?: (versionId: string, pages: number) => void;
 }) {
   const [tab, setTab] = useState<string | null>('pdf');
   const [page, setPage] = useState(1);
@@ -66,27 +69,31 @@ export function EvidencePanel({
 
         <Tabs.Panel value="pdf" pt="sm" className="evidence-tab-panel">
           <Stack gap="xs" h="100%">
-            <Group>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Previous
-              </Button>
-              <Text size="sm">
-                page {page} of {numPages || '…'}
-              </Text>
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={page >= numPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </Group>
+            {/* Page controls only for multi-page PDFs: on a single page they can do nothing.
+                Also hidden while loading (numPages is 0) so a one-page PDF never flashes them. */}
+            {numPages > 1 && (
+              <Group>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Previous
+                </Button>
+                <Text size="sm">
+                  page {page} of {numPages}
+                </Text>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={page >= numPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </Group>
+            )}
             {loadError && (
               <Alert color="red" title="Could not load the PDF">
                 {loadError}
@@ -102,6 +109,7 @@ export function EvidencePanel({
                   onLoadSuccess={({ numPages: n }) => {
                     setLoadError(null);
                     setNumPages(n);
+                    onPageCount?.(version.id, n);
                     setPage((p) => Math.min(Math.max(p, 1), n));
                   }}
                   onLoadError={(e) => setLoadError(e.message)}

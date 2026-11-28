@@ -21,7 +21,7 @@ interface Props {
 /**
  * Version picker: a horizontal timeline of numbered steps on top of the detail page's main
  * panel, oldest on the left. The current version is filled; an older version being viewed
- * gets a ring. Only numbers are shown (status and upload time of the shown version are in the
+ * gets a ring; a document with only one version shows no timeline. Only numbers are shown (status and upload time of the shown version are in the
  * sidebar). Paginated rather than scrolled because the row has a fixed height (the review
  * below must not jump) and the owner chose pages over a scrolling strip. The shown version
  * lives in the `?version=N` param; choosing the current version clears it, as before.
@@ -57,6 +57,15 @@ export function VersionTimeline({ documentId, versionNo, currentVersionNo }: Pro
   // versionPage pages newest first (page 0 = newest); each page is drawn oldest-left, so
   // the left arrow moves to older versions (a higher page number).
   const steps = [...view.items].reverse();
+
+  // With a single version there is nothing to pick, so the timeline is hidden and the review
+  // gets its height. While the list loads, a current version above 1 already proves there are
+  // several (show the skeleton); otherwise render nothing, so a one-version document never
+  // flashes a skeleton that then disappears. Uploading a new version refetches the list
+  // (NewVersionUpload invalidates it), so the timeline appears as soon as v2 exists.
+  if (versions.isPending ? currentVersionNo <= 1 : versions.isSuccess && total <= 1) {
+    return null;
+  }
 
   return (
     <section aria-label="Versions">

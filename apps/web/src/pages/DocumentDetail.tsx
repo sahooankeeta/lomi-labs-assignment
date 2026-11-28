@@ -20,6 +20,9 @@ export function DocumentDetail() {
   const { id = '' } = useParams();
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The shown PDF's page count, reported by EvidencePanel once the file loads (the API has
+  // none). Keyed by version id so switching versions never reuses another file's count.
+  const [pageCount, setPageCount] = useState<{ versionId: string; pages: number } | null>(null);
 
   // The shown version: `?version=N`, else the current one. Anything non-numeric is ignored.
   const [params, setParams] = useSearchParams();
@@ -68,6 +71,9 @@ export function DocumentDetail() {
   const selected =
     d.values.find((v) => v.id === selectedId)?.id ?? (groups.attention[0] ?? d.values[0])?.id;
   const isCurrent = d.version.versionNo === d.currentVersionNo;
+  // "page N" on the cards only helps when there is more than one page. Until the PDF loads the
+  // count is unknown (0), so the label stays hidden rather than flashing on one-page files.
+  const pages = pageCount?.versionId === d.version.id ? pageCount.pages : 0;
   // Old versions are read-only (the server answers 409 too).
   const canReview = d.status === 'extracted' && isCurrent;
 
@@ -142,6 +148,7 @@ export function DocumentDetail() {
                         selected={v.id === selected}
                         onSelect={setSelectedId}
                         canReview={canReview}
+                        showPage={pages > 1}
                       />
                     ))}
                   </Stack>
@@ -152,6 +159,7 @@ export function DocumentDetail() {
         <EvidencePanel
           version={d.version}
           selected={d.values.find((v) => v.id === selected) ?? null}
+          onPageCount={(versionId, n) => setPageCount({ versionId, pages: n })}
         />
       </div>
     </Stack>
