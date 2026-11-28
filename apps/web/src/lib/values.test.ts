@@ -54,7 +54,13 @@ describe('effectiveValue', () => {
   });
 });
 
-const approve: ReviewDto = { id: 'r1', action: 'approve', correctedValue: null, note: null, createdAt: '' };
+const approve: ReviewDto = {
+  id: 'r1',
+  action: 'approve',
+  correctedValue: null,
+  note: null,
+  createdAt: '',
+};
 const correct = (value: string): ReviewDto => ({
   id: 'r2',
   action: 'correct',
@@ -114,9 +120,9 @@ describe('previousLabel', () => {
     );
   });
   it('says when only the quote changed', () => {
-    expect(
-      previousLabel(v('a', { previous: prev({ change: 'evidence', review: approve }) })),
-    ).toBe('same value as v1 (approved), but its quote changed');
+    expect(previousLabel(v('a', { previous: prev({ change: 'evidence', review: approve }) }))).toBe(
+      'same value as v1 (approved), but its quote changed',
+    );
   });
   it('labels unchanged values by whether a review was carried', () => {
     expect(
@@ -135,7 +141,12 @@ describe('previousLabel', () => {
     expect(
       previousLabel(
         v('a', {
-          previous: prev({ versionNo: 2, change: null, reviewState: 'carried_over', review: approve }),
+          previous: prev({
+            versionNo: 2,
+            change: null,
+            reviewState: 'carried_over',
+            review: approve,
+          }),
           carriedReview: approve,
         }),
       ),

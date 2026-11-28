@@ -27,6 +27,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       throw new ApiRequestError(res.status, parsed.data.error, parsed.data.message);
     throw new ApiRequestError(res.status, 'internal', `${res.status} ${res.statusText}`);
   }
+  // 204 (DELETE) has no body to parse.
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -41,6 +43,11 @@ export function apiPost<T>(path: string, body?: unknown): Promise<T> {
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+/** DELETE a resource; resolves with nothing on 204. */
+export function apiDelete(path: string): Promise<void> {
+  return request<void>(path, { method: 'DELETE' });
 }
 
 /** POST multipart form data; the browser sets the boundary header itself. */

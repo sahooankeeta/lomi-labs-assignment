@@ -7,6 +7,12 @@ export interface FileStore {
   put(bytes: Uint8Array): Promise<{ key: string; sha256: string }>;
   read(key: string): Promise<Uint8Array>;
   stream(key: string): NodeJS.ReadableStream;
+  /**
+   * Deletes the stored bytes for `key`. Idempotent: a missing file resolves.
+   * Content-addressed, so one key can back several rows: callers must first
+   * check that no row still uses the key (see `deleteDocument`'s `orphanedFileKeys`).
+   */
+  remove(key: string): Promise<void>;
 }
 
 const KEY_PATTERN = /^[0-9a-f]{64}\.pdf$/;
@@ -44,6 +50,17 @@ export class LocalFileStore implements FileStore {
 
   stream(key: string): NodeJS.ReadableStream {
     return createReadStream(this.pathFor(key));
+  }
+
+  remove(key: string): Promise<void> {
+    // `force` makes a missing file a no-op, so a retried delete is safe. The
+    // invalid-key throw is turned into a rejection, matching `read`, so callers
+    // get one error channel instead of a sync throw on some paths.
+    try {
+      return rm(this.pathFor(key), { force: true });
+    } catch (err) {
+      return Promise.reject(err);
+    }
   }
 
   private pathFor(key: string): string {

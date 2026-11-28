@@ -36,11 +36,11 @@ written up in the README.
 ## Anti-goals (would fail even if it "works")
 
 - Any state a user can see living only in Redis.
-- A document stuck in `extracting` forever, or silently disappearing.
+- A document stuck in `extracting` forever, or disappearing without a user's confirmed delete.
 - A value kept whose evidence isn't verbatim in its version's text, or a "best guess" for a missing
   field.
 - A re-run, retry or crash recovery producing duplicate or mixed (two runs interleaved) values.
-- Overwriting or deleting earlier versions, values or reviews.
+- Overwriting or deleting earlier versions, values or reviews (by re-extraction or a new version).
 
 ## Constraints
 
@@ -99,6 +99,8 @@ written up in the README.
   from the API; tests inject a fake counter. See Chunking.
 - Decisions are also written as short notes in `docs/decisions/` (one file per decision: context,
   choice, alternatives, consequences); the README stays short and links to them.
+- **Delete is a hard delete of the whole document** (never a single version), user-confirmed, in
+  one locked transaction. See [0010](../../decisions/0010-document-delete.md).
 
 ## Design
 

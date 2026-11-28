@@ -8,6 +8,7 @@ import {
   createDb,
   createDocumentWithV1,
   createVersion,
+  deleteDocument,
   getDocumentDetail,
   retryCurrentVersion,
   reviewValue,
@@ -71,6 +72,8 @@ class SpyExtractor implements Extractor {
   constructor(
     delayMs = 0,
     private readonly failOnPart?: number,
+    /** Awaited at the start of each `extract` with the 1-based call number (tests act between calls). */
+    private readonly onCall?: (n: number) => Promise<void>,
   ) {
     this.inner = new FakeExtractor({ delayMs });
   }
@@ -79,6 +82,7 @@ class SpyExtractor implements Extractor {
   }
   async extract(req: Parameters<Extractor['extract']>[0], opts?: { signal?: AbortSignal }) {
     this.calls.push(req.chunkText);
+    await this.onCall?.(this.calls.length);
     this.inFlight++;
     this.maxInFlight = Math.max(this.maxInFlight, this.inFlight);
     try {
@@ -247,6 +251,53 @@ describe('processVersion', () => {
     const v = await version(versionId);
     expect(v.status).toBe('extracting');
     expect(await valueCount(versionId)).toBe(0);
+  });
+
+  it('checks ownership before each chunk: a takeover after chunk 1 makes no further calls', async () => {
+    const { versionId } = await seed('invoice', pdf('invoice-001.pdf'));
+    const spy = new SpyExtractor(0, undefined, async (n) => {
+      if (n === 1) {
+        await db.documentVersion.update({
+          where: { id: versionId },
+          data: { activeRunId: crypto.randomUUID() },
+        });
+      }
+    });
+    // renewMs is far beyond the test: only the per-chunk check can stop this run.
+    const result = await processVersion(
+      deps(spy, { chunkOptions: SMALL_CHUNKS, chunkConcurrency: 1, renewMs: 60_000 }),
+      versionId,
+    );
+    expect(result).toBe('stale');
+    expect(await db.versionChunk.count({ where: { versionId } })).toBeGreaterThan(1);
+    expect(spy.calls).toHaveLength(1);
+  });
+
+  it('a delete mid-extraction stops the run and leaves no rows behind', async () => {
+    const { documentId, versionId } = await seed('invoice', pdf('invoice-001.pdf'));
+    const spy = new SpyExtractor(0, undefined, async (n) => {
+      if (n === 1) await deleteDocument(db, documentId);
+    });
+    const result = await processVersion(
+      deps(spy, { chunkOptions: SMALL_CHUNKS, chunkConcurrency: 1, renewMs: 60_000 }),
+      versionId,
+    );
+    expect(result).toBe('stale');
+    expect(spy.calls).toHaveLength(1);
+    const where = { versionId };
+    expect(await db.documentVersion.count({ where: { id: versionId } })).toBe(0);
+    expect(await db.extractionRun.count({ where })).toBe(0);
+    expect(await db.chunkResult.count({ where })).toBe(0);
+    expect(await db.versionChunk.count({ where })).toBe(0);
+    expect(await db.extractedValue.count({ where })).toBe(0);
+  });
+
+  it('a job for an already-deleted version is skipped', async () => {
+    const { documentId, versionId } = await seed('invoice', pdf('invoice-001.pdf'));
+    await deleteDocument(db, documentId);
+    const spy = new SpyExtractor();
+    await expect(processVersion(deps(spy), versionId)).resolves.toBe('skipped');
+    expect(spy.calls).toHaveLength(0);
   });
 
   it('keeps the lease alive across a long extract call', async () => {

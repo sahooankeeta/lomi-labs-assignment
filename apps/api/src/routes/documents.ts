@@ -1,4 +1,9 @@
-import { retryCurrentVersion, getDocumentDetail, createDocumentWithV1 } from '@lomi/db';
+import {
+  retryCurrentVersion,
+  getDocumentDetail,
+  createDocumentWithV1,
+  deleteDocument,
+} from '@lomi/db';
 import { UploadFields, type DocumentDetailDto } from '@lomi/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -98,5 +103,32 @@ export function documentRoutes(app: FastifyInstance, deps: Deps): void {
     const body = await summarize(deps, id);
     fireEnqueue(deps, req, result.versionId, result.attempts);
     return reply.code(202).send(body);
+  });
+
+  /**
+   * `DELETE /documents/:id`: hard-deletes the document and all its versions.
+   *
+   * - `204`: deleted (no body). Nothing is enqueued and Redis is not touched.
+   * - `400 bad_request`: `:id` is not a UUID.
+   * - `404 not_found`: no such document (also what a second delete gets).
+   *
+   * The rows go in one Postgres transaction; PDFs that no other version uses are removed
+   * from the file store only after it commits.
+   */
+  app.delete('/documents/:id', async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const result = await deleteDocument(deps.db, id);
+    if (result.kind === 'not_found') throw new HttpError(404, 'not_found', 'document not found');
+
+    // The rows are already gone, so a failed removal must not fail the request: an orphan
+    // file is harmless (content-addressed, reused by a later upload), so only warn.
+    for (const key of result.orphanedFileKeys) {
+      try {
+        await deps.files.remove(key);
+      } catch (err) {
+        req.log.warn({ err, key }, 'could not remove the file of a deleted document');
+      }
+    }
+    return reply.code(204).send();
   });
 }

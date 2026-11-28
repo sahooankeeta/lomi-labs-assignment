@@ -37,6 +37,7 @@ export function PdfDrop({ label, file, onChange, disabled }: Props) {
           onChange(null);
           setRejected(dropRejectionMessage(rejections.flatMap((r) => r.errors.map((e) => e.code))));
         }}
+        className="pdf-drop"
         p="sm"
         mih={56}
         style={{ display: 'flex', alignItems: 'center' }}
@@ -50,7 +51,7 @@ export function PdfDrop({ label, file, onChange, disabled }: Props) {
           </Text>
         </Dropzone.Reject>
         <Dropzone.Idle>
-          <Text size="sm" c={file ? undefined : 'dimmed'}>
+          <Text size="sm" lh={1.3} c={file ? undefined : 'dimmed'}>
             {file ? file.name : 'Drag a PDF here, or click to choose'}
           </Text>
         </Dropzone.Idle>

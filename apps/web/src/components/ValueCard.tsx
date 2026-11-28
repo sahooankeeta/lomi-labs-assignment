@@ -1,28 +1,19 @@
-import {
-  Alert,
-  Badge,
-  Blockquote,
-  Button,
-  Card,
-  Group,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-} from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import type { ReviewResultDto, ValueDto, ValueReviewState } from '@lomi/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { apiPost } from '../api';
 import { effectiveValue, previousLabel, primaryAction, type ReviewBody } from '../lib/values';
+import { palette } from '../theme';
 import { PreviousBlock } from './PreviousBlock';
 import { ValueHistory } from './ValueHistory';
 
-const STATE_COLOR: Record<ValueReviewState, string> = {
-  pending: 'orange',
-  approved: 'green',
-  corrected: 'blue',
-  carried_over: 'gray',
+// Same pastels as the review ring, always under ink text; the pill keeps the state's name.
+const STATE_BG: Record<ValueReviewState, string> = {
+  pending: palette.blush,
+  approved: palette.sage,
+  corrected: palette.sky,
+  carried_over: palette.butter,
 };
 
 interface Props {
@@ -37,7 +28,7 @@ interface Props {
 }
 
 /**
- * One extracted field: its value, gap reason or evidence, review state, and the
+ * One extracted field: its value and evidence page, gap reason, review state, and the
  * Approve / Correct actions. Each action is sent immediately as one review (no drafts).
  */
 export function ValueCard({ value, selected, onSelect, canReview, documentId }: Props) {
@@ -75,41 +66,51 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
   return (
     <Card
       withBorder
-      padding="sm"
+      padding="md"
       onClick={() => onSelect(value.id)}
       style={{
         cursor: 'pointer',
-        borderColor: selected ? 'var(--mantine-color-blue-6)' : undefined,
-        borderWidth: selected ? 2 : undefined,
+        // The selected card gets an ink outline (not just a tint) so it reads without colour.
+        borderColor: selected ? palette.ink : palette.line,
+        borderWidth: selected ? 2 : 1,
       }}
     >
       <Stack gap="xs">
         <Group justify="space-between">
           <Group gap="xs">
             <Text fw={600}>{value.field}</Text>
-            <Text size="xs" c="dimmed">
-              {value.fieldType}
-            </Text>
             {isGap && (
-              <Badge color="yellow" variant="light">
+              <Badge bg={palette.butter} c={palette.ink}>
                 Gap
               </Badge>
             )}
           </Group>
-          <Badge color={STATE_COLOR[value.reviewState]}>{value.reviewState}</Badge>
+          <Badge bg={STATE_BG[value.reviewState]} c={palette.ink} fw={500}>
+            {value.reviewState}
+          </Badge>
         </Group>
 
-        {corrected ? (
-          <Group gap="xs">
-            <Text>{effective}</Text>
-            {value.value !== null && (
-              <Text td="line-through" c="dimmed">
-                {value.value}
+        {/* The value, with its evidence page on the right. The quote itself is not repeated
+            on the card: selecting the card jumps the PDF to the page and the Text tab
+            highlights it. */}
+        {!isGap && (
+          <Group justify="space-between" wrap="nowrap" align="baseline">
+            {corrected ? (
+              <Group gap="xs">
+                <Text>{effective}</Text>
+                <Text td="line-through" c="dimmed">
+                  {value.value}
+                </Text>
+              </Group>
+            ) : (
+              <Text>{value.value}</Text>
+            )}
+            {value.evidencePage !== null && (
+              <Text size="sm" fs="italic" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                page {value.evidencePage}
               </Text>
             )}
           </Group>
-        ) : (
-          !isGap && <Text>{value.value}</Text>
         )}
 
         {label && (
@@ -130,7 +131,8 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
               <Button
                 key={`${c.value}-${c.page}`}
                 size="compact-xs"
-                variant="light"
+                variant="white"
+                c="ink"
                 disabled={disabled}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -141,15 +143,6 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
               </Button>
             ))}
           </Group>
-        )}
-
-        {value.evidence && (
-          <Blockquote
-            p="xs"
-            cite={value.evidencePage !== null ? `page ${value.evidencePage}` : undefined}
-          >
-            {value.evidence}
-          </Blockquote>
         )}
 
         {value.previous && (
@@ -193,7 +186,7 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
                 <Button type="submit" size="xs" disabled={disabled || draft.trim() === ''}>
                   Save
                 </Button>
-                <Button size="xs" variant="default" onClick={() => setEditing(false)}>
+                <Button size="xs" variant="outline" onClick={() => setEditing(false)}>
                   Cancel
                 </Button>
               </Group>
@@ -213,7 +206,7 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
             </Button>
             <Button
               size="xs"
-              variant="default"
+              variant="outline"
               disabled={disabled}
               onClick={(e) => {
                 e.stopPropagation();

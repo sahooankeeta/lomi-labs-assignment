@@ -1,18 +1,21 @@
-import { Alert, Anchor, Button, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Button, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import type { DocumentDetailDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { apiGet, apiPost } from '../api';
+import { DocumentSummary } from '../components/DocumentSummary';
+import { SidebarPortal } from '../components/SidebarSlot';
 import { EvidencePanel } from '../components/EvidencePanel';
-import { StatusPill } from '../components/StatusPill';
+import { VersionTimeline } from '../components/VersionTimeline';
 import { ValueCard } from '../components/ValueCard';
-import { VersionBar } from '../components/VersionBar';
-import { progressLabel } from '../lib/format';
 import { pollInterval } from '../lib/poll';
 import { groupValues } from '../lib/values';
 
-/** Detail page: header, status messages, and the value cards grouped by review need. */
+/**
+ * Detail page: the review content (status messages, value cards, evidence). The document's
+ * summary is portalled into the sidebar from here, so one query feeds both places.
+ */
 export function DocumentDetail() {
   const { id = '' } = useParams();
   const queryClient = useQueryClient();
@@ -39,12 +42,22 @@ export function DocumentDetail() {
     },
   });
 
-  if (doc.isPending) return <Loader />;
+  // While loading or failing, the sidebar slot shows the loader / error so the sidebar is
+  // never empty; the main panel stays blank until there is a document.
+  if (doc.isPending) {
+    return (
+      <SidebarPortal>
+        <Loader size="sm" color="gray" />
+      </SidebarPortal>
+    );
+  }
   if (doc.isError) {
     return (
-      <Alert color="red" title="Could not load document">
-        {doc.error.message}
-      </Alert>
+      <SidebarPortal>
+        <Alert color="red" title="Could not load document">
+          {doc.error.message}
+        </Alert>
+      </SidebarPortal>
     );
   }
 
@@ -65,17 +78,15 @@ export function DocumentDetail() {
   ];
 
   return (
-    <Stack>
-      <Group>
-        <Title order={2}>{d.title}</Title>
-        <Text c="dimmed">
-          {d.type} · v{d.version.versionNo}
-        </Text>
-        <StatusPill status={d.status} />
-        <Text size="sm">{progressLabel(d.progress)}</Text>
-      </Group>
+    // `detail-page` is a full-height column: the versions row and any alerts keep their size
+    // and the review / evidence columns share the rest, each scrolling inside itself.
+    <Stack gap="lg" className="detail-page">
+      {/* Summary (title, progress, versions, delete) lives in the sidebar, not the main panel. */}
+      <SidebarPortal>
+        <DocumentSummary d={d} id={id} isCurrent={isCurrent} />
+      </SidebarPortal>
 
-      <VersionBar
+      <VersionTimeline
         documentId={id}
         versionNo={d.version.versionNo}
         currentVersionNo={d.currentVersionNo}
@@ -113,14 +124,16 @@ export function DocumentDetail() {
         <Text c="dimmed">No fields defined for this type.</Text>
       )}
 
-      <Grid>
-        <Grid.Col span={6}>
+      <div className="detail-columns">
+        <div className="detail-review">
           <Stack>
             {sections.map(
               ([heading, items]) =>
                 items.length > 0 && (
                   <Stack key={heading} gap="xs">
-                    <Title order={4}>{heading}</Title>
+                    <Title order={3} fz="lg">
+                      {heading}
+                    </Title>
                     {items.map((v) => (
                       <ValueCard
                         key={v.id}
@@ -135,14 +148,12 @@ export function DocumentDetail() {
                 ),
             )}
           </Stack>
-        </Grid.Col>
-        <Grid.Col span={6}>
-          <EvidencePanel
-            version={d.version}
-            selected={d.values.find((v) => v.id === selected) ?? null}
-          />
-        </Grid.Col>
-      </Grid>
+        </div>
+        <EvidencePanel
+          version={d.version}
+          selected={d.values.find((v) => v.id === selected) ?? null}
+        />
+      </div>
     </Stack>
   );
 }

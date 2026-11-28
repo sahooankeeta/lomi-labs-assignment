@@ -1,15 +1,4 @@
-import {
-  Alert,
-  Button,
-  Card,
-  Group,
-  Loader,
-  Mark,
-  ScrollArea,
-  Stack,
-  Tabs,
-  Text,
-} from '@mantine/core';
+import { Alert, Button, Card, Group, Loader, Mark, Stack, Tabs, Text } from '@mantine/core';
 import type { ValueDto, VersionDto } from '@lomi/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Document, Page } from 'react-pdf';
@@ -65,20 +54,22 @@ export function EvidencePanel({
     if (tab === 'text') markRef.current?.scrollIntoView({ block: 'center' });
   }, [tab, selected?.id, selected?.evidenceStart, selected?.evidenceEnd]);
 
+  // Card surface and pill tabs come from the theme defaults (theme.ts).
   return (
-    <Card withBorder>
-      <Tabs value={tab} onChange={setTab}>
+    // Fills its column (see .evidence-card in layout.css); the page or text scrolls inside.
+    <Card p="md" className="evidence-card">
+      <Tabs value={tab} onChange={setTab} className="evidence-tabs">
         <Tabs.List>
           <Tabs.Tab value="pdf">PDF</Tabs.Tab>
           <Tabs.Tab value="text">Text</Tabs.Tab>
         </Tabs.List>
 
-        <Tabs.Panel value="pdf" pt="sm">
-          <Stack gap="xs">
+        <Tabs.Panel value="pdf" pt="sm" className="evidence-tab-panel">
+          <Stack gap="xs" h="100%">
             <Group>
               <Button
                 size="xs"
-                variant="default"
+                variant="outline"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
               >
@@ -89,7 +80,7 @@ export function EvidencePanel({
               </Text>
               <Button
                 size="xs"
-                variant="default"
+                variant="outline"
                 disabled={page >= numPages}
                 onClick={() => setPage((p) => p + 1)}
               >
@@ -101,40 +92,43 @@ export function EvidencePanel({
                 {loadError}
               </Alert>
             )}
-            <div ref={box}>
-              <Document
-                file={`/api/versions/${version.id}/file`}
-                loading={<Loader size="sm" />}
-                error={null}
-                onLoadSuccess={({ numPages: n }) => {
-                  setLoadError(null);
-                  setNumPages(n);
-                  setPage((p) => Math.min(Math.max(p, 1), n));
-                }}
-                onLoadError={(e) => setLoadError(e.message)}
-              >
-                <Page
-                  pageNumber={page}
-                  width={width}
-                  renderTextLayer={false}
-                  renderAnnotationLayer={false}
-                />
-              </Document>
+            <div className="evidence-paper">
+              {/* Measured separately: the paper box can grow a scrollbar, the inner div cannot. */}
+              <div ref={box}>
+                <Document
+                  file={`/api/versions/${version.id}/file`}
+                  loading={<Loader size="sm" />}
+                  error={null}
+                  onLoadSuccess={({ numPages: n }) => {
+                    setLoadError(null);
+                    setNumPages(n);
+                    setPage((p) => Math.min(Math.max(p, 1), n));
+                  }}
+                  onLoadError={(e) => setLoadError(e.message)}
+                >
+                  <Page
+                    pageNumber={page}
+                    width={width}
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                  />
+                </Document>
+              </div>
             </div>
           </Stack>
         </Tabs.Panel>
 
-        <Tabs.Panel value="text" pt="sm">
+        <Tabs.Panel value="text" pt="sm" className="evidence-tab-panel">
           {seg === null ? (
             <Text c="dimmed">Text not parsed yet</Text>
           ) : (
-            <ScrollArea h={600}>
+            <div className="evidence-paper evidence-text">
               <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
                 {seg.before}
                 {seg.match && <Mark ref={markRef}>{seg.match}</Mark>}
                 {seg.after}
               </pre>
-            </ScrollArea>
+            </div>
           )}
         </Tabs.Panel>
       </Tabs>

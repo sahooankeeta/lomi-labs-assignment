@@ -45,15 +45,19 @@ export async function reviewValue(
   return db.$transaction(async (tx): Promise<ReviewValueResult> => {
     const value = await tx.extractedValue.findUnique({ where: { id: valueId } });
     if (!value) return { kind: 'not_found' };
-    const version0 = await tx.documentVersion.findUniqueOrThrow({ where: { id: value.versionId } });
+    // A delete may commit between the value read and the lock, so every read that a
+    // delete can empty answers not_found instead of throwing.
+    const version0 = await tx.documentVersion.findUnique({ where: { id: value.versionId } });
+    if (!version0) return { kind: 'not_found' };
     const documentId = version0.documentId;
 
     // $queryRaw (not $executeRaw): a SELECT ... FOR SHARE returns rows.
     await tx.$queryRaw`SELECT 1 FROM documents WHERE id = ${documentId}::uuid FOR SHARE`;
 
     // Re-read after the lock: what we loaded above may be stale if a supersede just committed.
-    const document = await tx.document.findUniqueOrThrow({ where: { id: documentId } });
-    const version = await tx.documentVersion.findUniqueOrThrow({ where: { id: value.versionId } });
+    const document = await tx.document.findUnique({ where: { id: documentId } });
+    const version = await tx.documentVersion.findUnique({ where: { id: value.versionId } });
+    if (!document || !version) return { kind: 'not_found' };
     if (document.currentVersionId !== version.id) {
       return {
         kind: 'not_reviewable',
