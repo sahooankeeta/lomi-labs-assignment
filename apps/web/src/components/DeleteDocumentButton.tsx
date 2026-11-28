@@ -43,7 +43,7 @@ function TrashIcon() {
 
 /**
  * "Delete" button plus its confirmation modal. The modal lists every version that will go
- * (shared `['versions', id]` cache with VersionBar). Deletion is whole-document on purpose:
+ * (shared `['versions', id]` cache with VersionTiles). Deletion is whole-document on purpose:
  * earlier versions must stay queryable, so there is no per-version delete. After a delete the
  * user lands on the list (see `leave`).
  */
@@ -111,12 +111,7 @@ export function DeleteDocumentButton({
       ) : (
         // A solid pastel-red pill with dark red text (same pair as the failed status pill, 7.4:1):
         // stands apart from the primary pills and reads on cream and on the charcoal sidebar.
-        <Button
-          size="sm"
-          bg={reviewColors.failed.bg}
-          c={reviewColors.failed.fg}
-          onClick={open}
-        >
+        <Button size="sm" bg={reviewColors.failed.bg} c={reviewColors.failed.fg} onClick={open}>
           Delete
         </Button>
       )}

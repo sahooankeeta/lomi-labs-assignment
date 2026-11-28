@@ -95,18 +95,60 @@
   text-decoration: none;
   white-space: nowrap;
 }
-/* Version pills: raised charcoal with cream text; the active one is cream with ink text. */
-.app-sidebar .version-pill {
-  background: #4a463f;
-  color: #f6f1e7;
+/* Version tiles (top of the detail page): a fixed 6-column grid so the row width and height
+   never change between pages. The shown tile is charcoal with cream text; others are surface. */
+.version-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
 }
-.app-sidebar .version-pill:hover {
-  background: #57534b;
-}
-.app-sidebar .version-pill.version-pill-active,
-.app-sidebar .version-pill.version-pill-active:hover {
-  background: #f6f1e7;
+.version-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 92px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #ddd6c8;
+  border-radius: 14px;
+  background: #ece7de;
   color: #111111;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.version-tile:hover {
+  background: #e2dcd0;
+}
+.version-tile:focus-visible {
+  outline: 2px solid #2e2b27;
+  outline-offset: 2px;
+}
+.version-tile.version-tile-active,
+.version-tile.version-tile-active:hover {
+  background: #2e2b27;
+  border-color: #2e2b27;
+  color: #f6f1e7;
+  cursor: default;
+}
+.version-tile.version-tile-active:focus-visible {
+  outline-color: #8a8478;
+}
+.version-tile-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 15px;
+}
+.version-tile-current {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.version-tile-date {
+  font-size: 12px;
+  opacity: 0.8;
+  white-space: nowrap;
 }
 /* Pushes API health to the bottom when the form is short. */
 .app-sidebar-foot {

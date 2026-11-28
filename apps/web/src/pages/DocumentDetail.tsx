@@ -7,6 +7,7 @@ import { apiGet, apiPost } from '../api';
 import { DocumentSummary } from '../components/DocumentSummary';
 import { SidebarPortal } from '../components/SidebarSlot';
 import { EvidencePanel } from '../components/EvidencePanel';
+import { VersionTiles } from '../components/VersionTiles';
 import { ValueCard } from '../components/ValueCard';
 import { pollInterval } from '../lib/poll';
 import { groupValues } from '../lib/values';
@@ -82,6 +83,12 @@ export function DocumentDetail() {
       <SidebarPortal>
         <DocumentSummary d={d} id={id} isCurrent={isCurrent} />
       </SidebarPortal>
+
+      <VersionTiles
+        documentId={id}
+        versionNo={d.version.versionNo}
+        currentVersionNo={d.currentVersionNo}
+      />
 
       {!isCurrent && (
         <Alert color="gray">

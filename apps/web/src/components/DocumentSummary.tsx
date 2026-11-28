@@ -4,10 +4,10 @@ import { Link } from 'react-router';
 import { progressLabel } from '../lib/format';
 import { DeleteDocumentButton } from './DeleteDocumentButton';
 import { DocumentTypePill } from './DocumentTypePill';
+import { NewVersionUpload } from './NewVersionUpload';
 import { ReviewRing } from './ReviewRing';
 import { ReviewStatusPill } from './ReviewStatusPill';
 import { StatusPill } from './StatusPill';
-import { VersionBar } from './VersionBar';
 
 /**
  * Small pill link back to the list. Always a plain link to `/` (never history), so it also
@@ -39,7 +39,7 @@ interface Props {
 
 /**
  * The detail page's sidebar content: back link, delete, title and status pills, review
- * progress and versions. Rendered by DocumentDetail into the sidebar slot (it owns the
+ * progress and the new-version upload (the version picker is VersionTiles in the main panel). Rendered by DocumentDetail into the sidebar slot (it owns the
  * document query, so nothing is fetched twice). Blocks are slightly lighter charcoal panels;
  * the title is clamped to two lines with the full text in `title`.
  */
@@ -76,13 +76,12 @@ export function DocumentSummary({ d, id, isCurrent }: Props) {
         </Text>
         <ReviewRing progress={d.progress} />
       </div>
-      <div className="summary-panel">
-        <VersionBar
-          documentId={id}
-          versionNo={d.version.versionNo}
-          currentVersionNo={d.currentVersionNo}
-        />
-      </div>
+      {/* Only the current version can be replaced, so older versions get no upload. */}
+      {isCurrent && (
+        <div className="summary-panel">
+          <NewVersionUpload documentId={id} />
+        </div>
+      )}
     </Stack>
   );
 }
