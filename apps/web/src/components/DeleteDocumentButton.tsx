@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { ApiRequestError, apiDelete, apiGet } from '../api';
+import { removeQueriesWhenUnobserved } from '../lib/queryCache';
 import { deleteSummary } from '../lib/versions';
 import { reviewColors } from '../theme';
 import { StatusPill } from './StatusPill';
@@ -66,9 +67,12 @@ export function DeleteDocumentButton({
 
   // Success and "already gone" (double click, another tab) end the same way.
   const leave = () => {
-    // Remove, not invalidate: the detail poll would otherwise refetch and hit a 404.
-    queryClient.removeQueries({ queryKey: ['document', documentId] });
-    queryClient.removeQueries({ queryKey: ['versions', documentId] });
+    // Closing disables this button's own versions query (`enabled: opened`).
+    setOpened(false);
+    // Not invalidate (a refetch would 404), and not an immediate remove either: components
+    // still mounted would recreate the entries and fetch them. See removeQueriesWhenUnobserved.
+    removeQueriesWhenUnobserved(queryClient, { queryKey: ['document', documentId] });
+    removeQueriesWhenUnobserved(queryClient, { queryKey: ['versions', documentId] });
     void queryClient.invalidateQueries({ queryKey: ['documents'] });
     // Already on the list (deleted from a row): stay put, and do not push a duplicate entry.
     if (pathname !== '/') void navigate('/');
