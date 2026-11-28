@@ -111,23 +111,11 @@ curl -X POST localhost:3000/documents/<uuid>/retry
 
 ## Review UI
 
-Run `pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, then open http://localhost:5173. This is where the flow below was verified in a browser; the api starts and serves seeded PDFs with the stock relative paths from `.env.example`.
+The walkthrough is in [What to click first](#what-to-click-first). The review model and the choice of Mantine are in [0008](docs/decisions/0008-reviews.md), and delete in [0010](docs/decisions/0010-document-delete.md).
 
-For the compose stack (http://localhost:8080), rebuild the images one service at a time first, so the new UI is served: `docker compose build api`, then `worker`, `web`, `migrate`, then `docker compose up -d`. On :8080, the pdf.js worker (`assets/pdf.worker.*.mjs`) is checked to come back as `application/javascript` and `/api/documents` to return JSON; the full flow has not been clicked through there in a browser.
-
-The status pill is a UI-only review status derived on the client (the API's version statuses are fixed by the brief): Queued (grey), Extracting (yellow), Failed (red tint), In review (pink, extracted with values pending), Approved (green, nothing pending); older versions keep the raw status. Document types are colour-coded: invoice blue, lease teal, market report violet.
-
-1. **List.** Every document with its status and review progress. Upload a PDF with the type picker; the list polls while anything is queued or processing and stops once all are extracted. A non-PDF shows `file is not a PDF`.
-2. **Detail.** Click a document. Values are grouped into cards (Needs review, Carried over, Done), with "page N" beside the value when the PDF has more than one page (the quote is highlighted in the Text tab, not repeated on the card). The header shows progress. The page fits one screen: the version timeline (when there are several versions) stays on top, and the cards and the PDF/Text panel below share the same height, each scrolling on its own.
-3. **Approve or correct.** Approve moves a card to Done. Correct opens an inline field; a value that does not fit the field type (`abc` for a money field) shows `"abc" is not a valid money`. A corrected card shows the new value with the original struck through. A gap offers "Confirm absent".
-4. **Evidence.** Clicking a value jumps the PDF to its page without switching tabs; if the Text tab is open, it scrolls to the quote, highlighted in `<mark>`.
-5. **Versions.** Once a document has more than one version, the detail page shows a horizontal version timeline on top (numbered dots joined by a line, oldest on the left, ten per page; the current version is filled, an older version being viewed is ringed, a failed one is rose; `?version=N` in the URL; the shown version's status and upload time are in the sidebar) and, in the sidebar on the current version, "Upload new version" (an identical file just refreshes). Older versions open read only, with a link back to the current one. A card whose previous version had a value shows a one-line label (for example `carried over from v1 (approved)` or `was $5,230.29 in v1 (not reviewed)`), the previous quote beside it, and, with more than one earlier version, a History drawer listing every version's value, quote and reviews.
-
-6. **Delete.** Delete (from the documents table or the detail page) removes the document and all its versions after a confirmation that lists them; there is no per-version delete, since earlier versions must stay queryable. It works on any status, including while extracting (the worker stops at the next chunk). The seed re-adds deleted fixture documents on the next boot. Afterwards the deleted document's cached queries are dropped only once no mounted component reads them, so nothing refetches it into a 404.
-
-The UI uses Mantine; the review model and that choice are in [0008](docs/decisions/0008-reviews.md).
-
-Styling: a Mantine theme (`apps/web/src/theme.ts`) inspired by a pastel dashboard look: a cream page, a fixed warm-charcoal sidebar whose content is per page (the upload form on the list; on the detail page the document's summary: back link, delete, title and status pills, review-progress ring and versions, so the main panel starts at the review content) with API health at the bottom, pill statuses that always carry their text, and charcoal pill buttons. No extra font or icon dependency.
+- **Status pills** are a review status the UI derives itself, on top of the API's fixed version statuses: Queued, Extracting, Failed, In review (extracted, values pending) and Approved (nothing pending). Older versions show the raw status.
+- **Where it was checked:** the full flow was clicked through on the dev server (`pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, http://localhost:5173). On the compose stack (http://localhost:8080) only the pdf.js worker's content type and the `/api/documents` JSON were checked.
+- **After code changes**, rebuild the compose images one service at a time (`docker compose build api`, then `worker`, `web`, `migrate`), then `docker compose up -d`. Otherwise :8080 serves the old UI.
 
 ## Versions and carry-over
 
