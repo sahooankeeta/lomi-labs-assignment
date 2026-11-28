@@ -1,6 +1,6 @@
 # Lomi Labs take-home: PDF extraction & review
 
-> **Status: Phase 3 complete (document versions and review carry-over).** Phase 1 (ingest and extraction) survives worker restarts, SIGKILL, Redis `FLUSHALL` and double uploads (checked by `scripts/verify-phase1.sh`). Phase 2 added review routes (approve, correct, confirm absent), progress, and a React UI with the PDF beside the values. Phase 3 adds new versions, carry-over of reviews to unchanged values, and a read-only history. Phases 2 and 3 were verified in a browser on the dev servers (`pnpm --filter @lomi/api dev`, `pnpm --filter @lomi/web dev`, UI on :5173; Phase 3 with the fake extractor). The compose images were not rebuilt for Phase 3. Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
+> **Status: all four phases done.** Ingest and extraction, review, versions with review carry-over, and hardening. `scripts/verify-phase1.sh` and `scripts/chaos.sh` break the running compose stack (restart and SIGKILL mid-extraction, Redis `FLUSHALL` plus restart, double upload, v2 during v1, delete mid-extraction) and check the end state through the API. See [Verify](#verify). Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
 PDFs go in, an LLM (Google Gemini; a fake extractor for tests) extracts structured values with quoted evidence, and a human approves or corrects each value. Reviews carry over across document versions when their evidence didn't change.
 
@@ -31,6 +31,15 @@ docker compose up -d
 - API: http://localhost:3000/health
 
 Compose starts Postgres and Redis, runs migrations, seeds version 1 of each fixture, and then starts the api, worker, and web services.
+
+**No Gemini key?** Run `EXTRACTOR=fake docker compose up --build` instead. The fake extractor returns deterministic values for the fixtures and needs no network.
+
+### What to click first
+
+1. Open http://localhost:8080. The three seeded documents go from Queued to Extracting to In review while the list polls.
+2. Open the **invoice**. Each value sits beside its quote. Click a value to jump to its passage in the PDF; the Text tab highlights the quote. Approve a few values and correct one (with a note).
+3. In the sidebar, **Upload new version** and pick `fixtures/documents/invoice-001.v2.pdf`. When it finishes, only `due_date` and `total_amount` are under Needs review, each showing its v1 value and review. The other three are Carried over.
+4. Open the **market report**. `median_household_income` is a gap with its reason. Confirm it absent.
 
 ### Without Docker (local dev)
 
@@ -224,7 +233,10 @@ fixtures/      Sample PDFs and manifests from the assignment.
 ```sh
 EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 docker compose up -d   # build services one at a time first
 bash scripts/verify-phase1.sh        # PASS/FAIL per check, non-zero exit on failure; restores the worker itself
+bash scripts/chaos.sh                # the brief's failure scenarios, end state checked via the API only
 ```
+
+`chaos.sh` runs, in order: (A) worker restart mid-extraction; (B) `FLUSHALL` plus restart of worker and api mid-extraction; (C) re-upload of B's file after the restart (200, same id, still one version); (D) v2 uploaded while v1 is extracting (v1 `superseded` with no values, v2 extracted with no previous links); (E) delete mid-extraction (404, and the next upload still extracts); (F) a sweep that every document is `extracted` with the expected value count and no field twice. Each check prints PASS or FAIL. Checks that depend on a break (for example "was extracting before the restart") fail if the break didn't happen, so nothing passes by accident.
 
 The script needs bash (Git Bash on Windows), `curl`, `node` and `docker compose`, and the worker running with the fake extractor (it fails fast otherwise). It checks: the three seeded documents extract; a worker restart mid-extraction; a double upload (200, same id, one row); `FLUSHALL` plus restart of worker and api; `SIGKILL` of the worker (lease recovery); no duplicate values per version. When it ends (pass or fail) it restores the worker to your normal settings (`env -u EXTRACTOR -u FAKE_EXTRACTOR_DELAY_MS docker compose up -d worker`, i.e. from `.env` and compose defaults); a failure of that step does not change the exit code.
 
@@ -257,8 +269,35 @@ Full model in `packages/db/prisma/schema.prisma`.
 
 Short notes (context, decision, alternatives, consequences) in [`docs/decisions/`](docs/decisions/): Postgres as source of truth, lease and reconciler, strict evidence check, chunking, structured outputs and model choice, Prisma, numeric values, reviews ([0008](docs/decisions/0008-reviews.md)), versions and carry-over ([0009](docs/decisions/0009-versions-and-carry-over.md)).
 
-## TODO (documented as they're decided)
+## Open decisions the brief left
 
-- Draft → submit review flow. Decisions held as drafts in localStorage per version, a sticky submit bar, a before/after summary, and an all-or-nothing `POST /documents/:id/reviews`. Deferred: the MVP saves each click.
-- Polling vs streaming in the UI
-- What was cut, and what changes at 10k documents
+| Decision                         | Chose                                                                                         | Why                                                                                                                                                                                                                                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Correction model                 | Annotation: append-only `reviews` beside the extracted value                                  | The LLM's value and its quote stay intact for audit and for carry-over comparison. The effective value is the latest correction. The UI shows the correction with the original struck through ([0008](docs/decisions/0008-reviews.md)).                                                   |
+| Parsed text                      | Stored per version, never rewritten                                                           | Evidence checks and the review UI for version N always use N's text, even after N+1 exists. Re-parsing could give different text if the parser changes.                                                                                                                                   |
+| "Unchanged" evidence             | Same normalized value **and** the old quote still appears anywhere in the new text            | Position-free, so it survives text that shifts. See [Versions and carry-over](#versions-and-carry-over).                                                                                                                                                                                  |
+| New version during an extraction | Supersede: the new version becomes current; the older unfinished one ends `superseded`        | The reviewer only cares about the latest file. Rejecting makes the client retry; queueing spends LLM calls on a version nobody will review. The old run notices at its next ownership check and writes nothing ([0009](docs/decisions/0009-versions-and-carry-over.md)).                  |
+| UI updates                       | Polling every 2 s, **only while** a shown version is `queued` or `extracting`; otherwise none | Status changes a few times per document and extraction takes seconds to a minute, so a 2 s poll feels live. An idle page sends no requests. SSE or WebSockets would need a pub/sub path from worker to api and reconnect handling, for no visible gain here (`apps/web/src/lib/poll.ts`). |
+| Identical re-upload              | `200` with the existing document or version (matched by sha256)                               | Covers the impatient double click without a second extraction.                                                                                                                                                                                                                            |
+| Gaps across versions             | Never carry over                                                                              | "Still absent" can't be checked against a quote, and v2 may now state the value.                                                                                                                                                                                                          |
+
+## What I cut, and what's next
+
+Cut for time:
+
+- **Draft → submit review flow.** Each approve or correct click saves at once. Next: hold drafts per version, add a sticky submit bar with a before/after summary, and save everything at once with `POST /documents/:id/reviews`.
+- **Auth and reviewer identity.** Reviews have no author. Next: users, and `reviewer_id` on `reviews`.
+- **Other LLM providers.** Only Gemini (free tier) plus the fake. Another provider is one `Extractor` class plus a factory branch.
+- **OCR.** A scanned PDF with no text layer fails with a clear message instead of being OCR'd.
+- **Deployment.** No live link. The stack runs locally only.
+- **Browser e2e tests.** The UI was clicked through by hand. The API, worker and chaos scenarios are scripted, but nothing scripted drives the UI.
+
+## At 10,000 documents
+
+- **List and progress queries.** `GET /documents` returns everything and computes progress per request. Add pagination and filters, and keep per-version review counters (updated in the review transaction) so the list doesn't aggregate values.
+- **Reconciler.** It scans for `queued` and expired-lease versions every 10 s (indexed on `(status, lease_expires_at)`). Every worker replica runs one today, which is safe (the BullMQ job id is the version id plus its attempt, so duplicate enqueues collapse, and the lease lets only one run own a version) but redundant. Next: one leader via a Postgres advisory lock, and batched scans.
+- **LLM throughput.** Workers scale horizontally on the queue, but provider rate limits become the bottleneck. Add a global rate limiter in Redis, per-tenant fairness, backoff with jitter on 429s, and a paid tier or several providers.
+- **Text storage.** Parsed text and raw LLM responses live in Postgres rows. Move large blobs to object storage (S3) with keys in Postgres, and keep only what the UI and evidence checks need.
+- **Files.** The local `uploads` volume becomes S3. The content-addressed keys already suit that.
+- **UI.** Polling a long list gets expensive. Poll only the in-flight IDs, or switch to SSE fed by Postgres `LISTEN/NOTIFY` once many reviewers watch at once.
+- **Long documents.** The 50-chunk limit fails a long document today. Next: retrieval to find the passages for each field, instead of sending every chunk.
