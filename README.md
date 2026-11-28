@@ -125,20 +125,20 @@ Code: `isUnchanged` (`packages/extraction/src/carry.ts`), `carryLinks` inside `f
 
 **What gets carried.**
 
-| # | Previous (v1) | New (v2) | v2 state | Card label |
-|---|---|---|---|---|
-| 1 | Value, approved | Same value, v1's quote found in v2's text | `carried_over` (v1's approval) | carried over from v1 (approved) |
-| 2 | Value, corrected | Same value, quote found | `carried_over`; effective value = the correction | carried over from v1 (corrected) |
-| 3 | Value carried over from an earlier version, no review of its own (e.g. v1 approved → v2 carried → now v3) | Same value, quote found | `carried_over` (the original review, passed along the chain) | carried over from v2 (approved) |
-| 4 | Value, never reviewed | Same value, quote found | `pending` (nothing to carry) | unchanged from v1 (not reviewed there) |
-| 5 | Value (any review) | Different value | `pending` | was $5,230.29 in v1 (approved / corrected / not reviewed) |
-| 6 | Value (any review) | Same value, v1's quote **not** in v2's text | `pending` | same value as v1 (approved / corrected / not reviewed), but its quote changed |
-| 7 | Value (any review) | Gap | `pending` | was $5,230.29 in v1 (approved / corrected / not reviewed) |
-| 8 | Gap (any review) | Value | `pending` | was a gap in v1 (confirmed absent / corrected / not reviewed) |
-| 9 | Gap, confirmed absent | Gap | `pending`: **gaps never carry** | also a gap in v1 (confirmed absent) |
-| 10 | Gap, corrected (value supplied) | Gap | `pending` | also a gap in v1, corrected to 52000 |
-| 11 | Gap, never reviewed | Gap | `pending` | also a gap in v1 (not reviewed) |
-| 12 | No extracted older version (v1 superseded or failed) | Anything | `pending`, no previous link | none |
+| #   | Previous (v1)                                                                                             | New (v2)                                    | v2 state                                                     | Card label                                                                    |
+| --- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| 1   | Value, approved                                                                                           | Same value, v1's quote found in v2's text   | `carried_over` (v1's approval)                               | carried over from v1 (approved)                                               |
+| 2   | Value, corrected                                                                                          | Same value, quote found                     | `carried_over`; effective value = the correction             | carried over from v1 (corrected)                                              |
+| 3   | Value carried over from an earlier version, no review of its own (e.g. v1 approved → v2 carried → now v3) | Same value, quote found                     | `carried_over` (the original review, passed along the chain) | carried over from v2 (approved)                                               |
+| 4   | Value, never reviewed                                                                                     | Same value, quote found                     | `pending` (nothing to carry)                                 | unchanged from v1 (not reviewed there)                                        |
+| 5   | Value (any review)                                                                                        | Different value                             | `pending`                                                    | was $5,230.29 in v1 (approved / corrected / not reviewed)                     |
+| 6   | Value (any review)                                                                                        | Same value, v1's quote **not** in v2's text | `pending`                                                    | same value as v1 (approved / corrected / not reviewed), but its quote changed |
+| 7   | Value (any review)                                                                                        | Gap                                         | `pending`                                                    | was $5,230.29 in v1 (approved / corrected / not reviewed)                     |
+| 8   | Gap (any review)                                                                                          | Value                                       | `pending`                                                    | was a gap in v1 (confirmed absent / corrected / not reviewed)                 |
+| 9   | Gap, confirmed absent                                                                                     | Gap                                         | `pending`: **gaps never carry**                              | also a gap in v1 (confirmed absent)                                           |
+| 10  | Gap, corrected (value supplied)                                                                           | Gap                                         | `pending`                                                    | also a gap in v1, corrected to 52000                                          |
+| 11  | Gap, never reviewed                                                                                       | Gap                                         | `pending`                                                    | also a gap in v1 (not reviewed)                                               |
+| 12  | No extracted older version (v1 superseded or failed)                                                      | Anything                                    | `pending`, no previous link                                  | none                                                                          |
 
 **Why.**
 
@@ -155,13 +155,14 @@ claim (lease) -> parse the PDF once and store the text -> plan chunks -> extract
 (3 at a time) -> merge -> finish. Finish also links each value to the previous version's value for the same field and carries that value's review when its evidence is unchanged. Every write is guarded by the run id, so a run that lost its lease
 writes nothing. The lease is renewed on its own timer, so a slow LLM call cannot lose it.
 
-| Event                   | What happens                                                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Worker killed / restart | Lease expires (30 s); the reconciler (every 10 s) re-enqueues; the next run reuses stored text and chunk results.                     |
-| SIGTERM                 | In-flight runs stop, the version goes back to `queued` without spending an attempt, and the next reconciler pass (≤ 10 s) resumes it. |
-| Redis `FLUSHALL`        | Jobs vanish; the reconciler re-adds every `queued` or expired version from Postgres within 10 s.                                      |
-| Missing key             | Version `failed` with `GEMINI_API_KEY is not set`; `POST /documents/:id/retry` once it is set.                                        |
-| Scanned PDF / too long  | Version `failed` with a clear message (`No text layer found...`, `Document too long (N chunks; limit 50)`).                           |
+| Event                           | What happens                                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Worker killed / restart         | Lease expires (30 s); the reconciler (every 10 s) re-enqueues; the next run reuses stored text and chunk results.                     |
+| SIGTERM                         | In-flight runs stop, the version goes back to `queued` without spending an attempt, and the next reconciler pass (≤ 10 s) resumes it. |
+| Redis `FLUSHALL`                | Jobs vanish; the reconciler re-adds every `queued` or expired version from Postgres within 10 s.                                      |
+| Missing key                     | Version `failed` with `GEMINI_API_KEY is not set`; `POST /documents/:id/retry` once it is set.                                        |
+| Scanned PDF / too long          | Version `failed` with a clear message (`No text layer found...`, `Document too long (N chunks; limit 50)`).                           |
+| Document deleted mid-extraction | The run's next ownership check (before each chunk) or lease renewal (≤ 10 s) fails; it writes nothing more and ends stale.            |
 
 Env: `EXTRACTOR` (`gemini` default, `fake`), `GEMINI_API_KEY` / `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `LLM_MAX_INFLIGHT`, `CHUNK_CONCURRENCY` (default 3), `UPLOAD_DIR`, `FIXTURES_DIR`, `REDIS_URL`, `DATABASE_URL`.
 
@@ -252,7 +253,6 @@ Short notes (context, decision, alternatives, consequences) in [`docs/decisions/
 
 ## TODO (documented as they're decided)
 
-- Delete a document (deferred). The plan is a hard delete of the document and all its versions in one locked transaction, keeping PDFs another document still uses. The worker would check before each chunk that its run still owns the version, so a delete stops LLM calls at the next chunk; in-flight calls are cut by the next lease renewal.
 - Draft → submit review flow. Decisions held as drafts in localStorage per version, a sticky submit bar, a before/after summary, and an all-or-nothing `POST /documents/:id/reviews`. Deferred: the MVP saves each click.
 - Polling vs streaming in the UI
 - What was cut, and what changes at 10k documents

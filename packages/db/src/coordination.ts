@@ -115,13 +115,16 @@ export async function claimVersion(
     return tx.documentVersion.findUniqueOrThrow({ where: { id: versionId } });
   });
   if (claimed) {
+    const doc = await db.document.findUnique({ where: { id: claimed.documentId } });
+    // Deleted between the claim commit and this read; the version and its run went with it.
+    if (!doc) return { kind: 'skipped' };
     return {
       kind: 'claimed',
       runId,
       version: {
         id: claimed.id,
         documentId: claimed.documentId,
-        type: (await db.document.findUniqueOrThrow({ where: { id: claimed.documentId } })).type,
+        type: doc.type,
         fileKey: claimed.fileKey,
         parsedText: claimed.parsedText,
         pageOffsets: claimed.pageOffsets,

@@ -193,6 +193,14 @@ export async function processVersion(
         limiter
           .run(async () => {
             if (runSignal.aborted) return;
+            // Ownership check before every chunk: one cheap UPDATE (it also extends the
+            // lease) means a delete or takeover costs at most the LLM calls already in
+            // flight, not every remaining chunk of the document. The 10 s timer above
+            // still covers a single long call.
+            if (!(await renewLease(db, versionId, runId, deps.leaseMs ?? LEASE_MS))) {
+              lost.abort(new Error('lease lost'));
+              return;
+            }
             const chunkText = text.slice(chunk.start, chunk.end);
             const prompt = buildPrompt(version.type, expected, chunkText, {
               chunkIndex: chunk.chunkIndex,
