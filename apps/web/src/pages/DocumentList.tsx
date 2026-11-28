@@ -46,56 +46,59 @@ export function DocumentList() {
       {docs.data?.length === 0 && <Text c="dimmed">No documents yet — upload one above.</Text>}
       {docs.data && docs.data.length > 0 && (
         <Card p="md">
-          {/* Styled by documentTable.css: ink pill header bar, rounded row hover. */}
-          <Table
-            className="doc-table"
-            verticalSpacing="md"
-            horizontalSpacing="md"
-            withColumnBorders={false}
-            withRowBorders={false}
-          >
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Title</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Version</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Review</Table.Th>
-                {/* Actions column: visually hidden label, the black bar stays unbroken. */}
-                <Table.Th w={56}>
-                  <VisuallyHidden>Actions</VisuallyHidden>
-                </Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {docs.data.map((d) => (
-                <Table.Tr key={d.id}>
-                  <Table.Td>
-                    <Anchor component={Link} to={`/documents/${d.id}`} c={palette.ink} fw={600}>
-                      {d.title}
-                    </Anchor>
-                  </Table.Td>
-                  <Table.Td>
-                    <DocumentTypePill type={d.type} />
-                  </Table.Td>
-                  <Table.Td>v{d.versionNo}</Table.Td>
-                  <Table.Td>
-                    <ReviewStatusPill status={d.status} progress={d.progress} />
-                  </Table.Td>
-                  <Table.Td>{progressLabel(d.progress)}</Table.Td>
-                  <Table.Td>
-                    {/* versionNo on a list row is the current version. */}
-                    <DeleteDocumentButton
-                      variant="icon"
-                      documentId={d.id}
-                      title={d.title}
-                      currentVersionNo={d.versionNo}
-                    />
-                  </Table.Td>
+          {/* Styled by documentTable.css: charcoal pill header bar, rounded row hover. The
+              wrapper scrolls the rows (scrollbar hidden) so the page itself never scrolls. */}
+          <div className="doc-scroll">
+            <Table
+              className="doc-table"
+              verticalSpacing="md"
+              horizontalSpacing="md"
+              withColumnBorders={false}
+              withRowBorders={false}
+            >
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Title</Table.Th>
+                  <Table.Th>Type</Table.Th>
+                  <Table.Th>Version</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Review</Table.Th>
+                  {/* Actions column: visually hidden label, the black bar stays unbroken. */}
+                  <Table.Th w={56}>
+                    <VisuallyHidden>Actions</VisuallyHidden>
+                  </Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {docs.data.map((d) => (
+                  <Table.Tr key={d.id}>
+                    <Table.Td>
+                      <Anchor component={Link} to={`/documents/${d.id}`} c={palette.ink} fw={600}>
+                        {d.title}
+                      </Anchor>
+                    </Table.Td>
+                    <Table.Td>
+                      <DocumentTypePill type={d.type} />
+                    </Table.Td>
+                    <Table.Td>v{d.versionNo}</Table.Td>
+                    <Table.Td>
+                      <ReviewStatusPill status={d.status} progress={d.progress} />
+                    </Table.Td>
+                    <Table.Td>{progressLabel(d.progress)}</Table.Td>
+                    <Table.Td>
+                      {/* versionNo on a list row is the current version. */}
+                      <DeleteDocumentButton
+                        variant="icon"
+                        documentId={d.id}
+                        title={d.title}
+                        currentVersionNo={d.versionNo}
+                      />
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </div>
         </Card>
       )}
     </Stack>

@@ -1,7 +1,8 @@
 /*
  * Sidebar contrast pairs (WCAG, computed; all >= 4.5:1):
  *   cream #F6F1E7 text/labels on charcoal #2E2B27 ... 12.51
- *   white input value text ink #111111 on #FFFFFF ... 18.88
+ *   input value text ink #111111 on cream #F6F1E7 ... 16.77
+ *   input placeholder #6B655B on cream .............. 5.13
  *   required asterisk rose #F2B4AA on charcoal ...... 7.97
  *   Upload enabled: ink on cream #F6F1E7 ............ 16.77
  *   Upload disabled: #BDB5A8 on #46423C .............. 4.91 (muted, but still legible)
@@ -31,11 +32,13 @@
   --mantine-color-dimmed: #bdb5a8;
   color: #f6f1e7;
 }
-/* Inputs stay white with ink text, and the required asterisk gets a light red that is
+/* Inputs share the cream field colour of the PDF drop area (one field colour, no white),
+   with ink text and a placeholder dark enough for cream; the required asterisk gets a light red that is
    readable on charcoal (Mantine's default red is dim there). */
 .app-sidebar .mantine-Input-input {
   --input-color: #111111;
-  --input-bg: #ffffff;
+  --input-bg: #f6f1e7;
+  --input-placeholder-color: #6b655b;
 }
 .app-sidebar .mantine-InputWrapper-required {
   --input-asterisk-color: #f2b4aa;
@@ -51,7 +54,7 @@
 /* Upload: cream pill with ink text on charcoal; muted (not invisible) when disabled. */
 .app-sidebar .upload-btn {
   --button-bg: #f6f1e7;
-  --button-hover: #ffffff;
+  --button-hover: #fbf8f2; /* lighter cream, not white */
   --button-color: #111111;
 }
 .app-sidebar .upload-btn:disabled,
@@ -76,4 +79,10 @@
   .app-panel {
     margin-left: 0;
   }
+}
+
+/* Every PDF drop area (sidebar upload and the detail page's "New version") uses the same cream
+   field colour as the inputs, so no upload field shows white. */
+.pdf-drop {
+  background: #f6f1e7;
 }

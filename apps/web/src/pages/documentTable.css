@@ -49,3 +49,37 @@
 .doc-table tbody tr:hover td:not(:last-child) {
   box-shadow: 1px 0 0 #fbf8f2;
 }
+
+/*
+ * The list page never scrolls as a whole: the rows scroll inside the card instead, with the
+ * scrollbar hidden (wheel, trackpad, touch and keyboard still scroll it) and the header bar
+ * pinned. 124px is everything above and below the card: the 12px outer inset and 12px panel
+ * padding (top and bottom), main's 20px vertical padding, the card's 16px padding and borders.
+ */
+.doc-scroll {
+  max-height: calc(100vh - 124px);
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+}
+.doc-scroll::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+/* Pinned header. The upward shadow in the card colour hides rows sliding through the 4px
+   row gap above the bar. Sticky cells each paint on their own layer, later ones on top, so
+   the seam cover points left (from each cell over its left neighbour's edge), not right. */
+.doc-table thead th {
+  position: sticky;
+  top: 4px;
+  z-index: 1;
+  box-shadow: 0 -8px 0 #ece7de;
+}
+.doc-table thead th:not(:first-child) {
+  box-shadow: -1px 0 0 #2e2b27, 0 -8px 0 #ece7de;
+}
+/* Narrow screens stack the sidebar above the content, so the page scrolls normally there. */
+@media (max-width: 1000px) {
+  .doc-scroll {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
