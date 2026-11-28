@@ -16,25 +16,8 @@
 
 cd "$(dirname "$0")/.." || exit 1
 
-API="${API_URL:-http://localhost:3000}"
-FAILS=0
-TMP=".verify-tmp"
-mkdir -p "$TMP"
-cleanup() {
-  rm -r -f -- "$TMP"
-  echo
-  echo "restoring worker to normal settings (.env and compose defaults)..."
-  if env -u EXTRACTOR -u FAKE_EXTRACTOR_DELAY_MS docker compose up -d worker >/dev/null 2>&1; then
-    echo "worker restored"
-  else
-    echo "WARNING: could not restore the worker; run: docker compose up -d worker"
-  fi
-}
-trap cleanup EXIT
-
-pass() { echo "PASS  $1"; }
-fail() { echo "FAIL  $1"; FAILS=$((FAILS + 1)); }
-check() { if [ "$1" = "ok" ]; then pass "$2"; else fail "$2 ($3)"; fi; }
+. scripts/lib.sh
+restore_worker_on_exit
 
 # psql_q <sql>: prints the result; on any docker/psql failure prints the error to stderr and returns 1.
 psql_q() {
@@ -46,59 +29,12 @@ psql_q() {
   printf '%s' "$out" | tr -d '\r'
 }
 
-# jget <dotted.path>: read JSON on stdin, print the value (empty if missing or invalid).
-jget() {
-  node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{let v=JSON.parse(s);for(const k of process.argv[1].split("."))v=v==null?v:v[k];console.log(v==null?"":v)}catch{console.log("")}})' "$1"
-}
-
-doc_status() { curl -s "$API/documents/$1" | jget status; }
-
-# wait_status <id> <status> <seconds>: poll until the document reaches the status.
-wait_status() {
-  local end=$((SECONDS + $3))
-  while [ $SECONDS -lt $end ]; do
-    [ "$(doc_status "$1")" = "$2" ] && return 0
-    sleep 1
-  done
-  return 1
-}
-
-wait_health() {
-  local end=$((SECONDS + ${1:-60})) code
-  while [ $SECONDS -lt $end ]; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' "$API/health")
-    [ "$code" = "200" ] && return 0
-    sleep 1
-  done
-  return 1
-}
-
-# upload <pdf> [type]: sets UP_CODE and UP_ID.
-upload() {
-  curl -s -o "$TMP/resp.json" -w '%{http_code}' -F "type=${2:-invoice}" -F "file=@$1" "$API/documents" >"$TMP/code.txt"
-  UP_CODE=$(cat "$TMP/code.txt")
-  UP_ID=$(jget id <"$TMP/resp.json")
-}
-
-# fresh_pdf <name>: invoice-001.v2.pdf plus a unique trailing comment, so it is new bytes every run.
-fresh_pdf() {
-  cp fixtures/documents/invoice-001.v2.pdf "$TMP/$1.pdf"
-  printf '\n%%verify-%s-%s\n' "$RANDOM$RANDOM" "$1" >>"$TMP/$1.pdf"
-}
-
 # ---- 0. preconditions -------------------------------------------------------------------------
 if ! wait_health 60; then
   echo "FAIL  api /health did not return 200 within 60 s"
   exit 1
 fi
-EXT=$(docker compose exec -T worker printenv EXTRACTOR 2>/dev/null | tr -d '\r')
-DELAY=$(docker compose exec -T worker printenv FAKE_EXTRACTOR_DELAY_MS 2>/dev/null | tr -d '\r')
-if [ "$EXT" != "fake" ] || [ "${DELAY:-0}" -lt 5000 ] 2>/dev/null; then
-  echo "FAIL  worker must run with EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 (got EXTRACTOR='$EXT' delay='$DELAY')."
-  echo "      Start it with: EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 docker compose up -d worker"
-  exit 1
-fi
-pass "precondition: api healthy, worker uses the fake extractor (delay ${DELAY} ms)"
+require_fake_worker
 
 # ---- 1. seeded documents extract ----------------------------------------------------------------
 SEEDED=""
@@ -178,10 +114,4 @@ else
   fail "6. value counts wrong: wrong-count='$bad' extracted-without-values='$empty' duplicates='$dups'"
 fi
 
-echo
-if [ "$FAILS" -eq 0 ]; then
-  echo "ALL CHECKS PASSED"
-  exit 0
-fi
-echo "$FAILS CHECK(S) FAILED"
-exit 1
+summary
