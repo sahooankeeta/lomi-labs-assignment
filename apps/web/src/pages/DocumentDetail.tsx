@@ -13,7 +13,7 @@ import {
 import type { DocumentDetailDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useParams, useSearchParams } from 'react-router';
+import { Link, useParams, useSearchParams } from 'react-router';
 import { apiGet, apiPost } from '../api';
 import { DeleteDocumentButton } from '../components/DeleteDocumentButton';
 import { EvidencePanel } from '../components/EvidencePanel';
@@ -23,7 +23,45 @@ import { ValueCard } from '../components/ValueCard';
 import { VersionBar } from '../components/VersionBar';
 import { progressLabel } from '../lib/format';
 import { pollInterval } from '../lib/poll';
+import { palette } from '../theme';
 import { groupValues } from '../lib/values';
+
+/**
+ * Subtle pill back to the list. Always a plain link to `/` (never history), so it also works
+ * when the page was opened directly. The arrow is inline SVG: no icon library.
+ */
+function BackToList() {
+  return (
+    <Link
+      to="/"
+      style={{
+        alignSelf: 'flex-start',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 14px 6px 10px',
+        borderRadius: 999,
+        border: `1px solid ${palette.line}`,
+        background: palette.surface,
+        color: palette.ink,
+        fontSize: 14,
+        fontWeight: 500,
+        textDecoration: 'none',
+      }}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M19 12H5M11 6l-6 6 6 6"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      All documents
+    </Link>
+  );
+}
 
 /** Detail page: header, status messages, and the value cards grouped by review need. */
 export function DocumentDetail() {
@@ -79,6 +117,7 @@ export function DocumentDetail() {
 
   return (
     <Stack gap="lg">
+      <BackToList />
       <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Stack gap={6}>
           <Title order={1}>{d.title}</Title>

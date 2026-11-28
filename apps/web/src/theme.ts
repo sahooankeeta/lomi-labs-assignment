@@ -24,7 +24,7 @@ export const palette = {
   surface: '#ECE7DE',
   /** Hairline borders on the cream/surface tones. */
   line: '#DDD5C7',
-  /** Near-black for text, the sidebar and primary buttons. */
+  /** Near-black for text, the table header and primary buttons. */
   ink: '#111111',
   /** Muted text on cream and pastels (still ≥ 4.5:1 on all of them). */
   muted: '#55514A',

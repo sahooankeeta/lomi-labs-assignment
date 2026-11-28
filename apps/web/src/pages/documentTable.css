@@ -1,0 +1,82 @@
+/*
+ * Documents table. Mantine's Table collapses borders, which cannot round a row, so this one
+ * uses separate borders with a small vertical gap; the hover highlight and the ink header bar
+ * are painted on the cells, with the outer cells of each row carrying the rounded corners.
+ */
+.doc-table {
+  border-collapse: separate;
+  border-spacing: 0 4px;
+}
+
+/* Header: one ink bar, fully rounded at both ends like the pill buttons. */
+.doc-table thead th {
+  background: #111111;
+  color: #f6f1e7;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 0;
+}
+.doc-table thead th:first-child {
+  border-radius: 999px 0 0 999px;
+  padding-left: 24px;
+}
+.doc-table thead th:last-child {
+  border-radius: 0 999px 999px 0;
+  padding-right: 24px;
+}
+
+/* Body rows: no rules between rows (the gap separates them); rounded warm hover. */
+.doc-table tbody td {
+  border: 0;
+}
+.doc-table tbody tr:hover td {
+  background: #fbf8f2;
+}
+.doc-table tbody td:first-child {
+  border-radius: 12px 0 0 12px;
+}
+.doc-table tbody td:last-child {
+  border-radius: 0 12px 12px 0;
+}
+
+/*
+ * List page layout: a sticky 320px upload column on the left, the stats and table to its
+ * right. Below 1100px the column stacks above the main content and stops being sticky.
+ */
+.list-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+.list-side {
+  flex: 0 0 320px;
+  width: 320px;
+  position: sticky;
+  top: 12px;
+}
+.list-main {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .list-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .list-side {
+    position: static;
+    flex: none;
+    width: 100%;
+  }
+}
+
+/* Fractional column widths leave hairline seams between painted cells; a 1px same-colour
+   shadow toward the next cell covers them (not on the last cell, which has the round end). */
+.doc-table thead th:not(:last-child) {
+  box-shadow: 1px 0 0 #111111;
+}
+.doc-table tbody tr:hover td:not(:last-child) {
+  box-shadow: 1px 0 0 #fbf8f2;
+}

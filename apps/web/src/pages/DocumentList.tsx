@@ -23,8 +23,9 @@ import { StatusPill } from '../components/StatusPill';
 import { progressLabel, uploadErrorMessage } from '../lib/format';
 import { pollInterval } from '../lib/poll';
 import { palette } from '../theme';
+import './documentTable.css';
 
-/** Upload form: picks a type, optional title and a PDF, then opens the created document. */
+/** Upload form (stacked for the sidebar column): picks a type, optional title and a PDF, then opens the created document. */
 function UploadForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -60,29 +61,25 @@ function UploadForm() {
         <Text fw={600} fz="lg">
           Upload a document
         </Text>
-        <Group align="flex-end" grow>
-          <Select
-            label="Type"
-            placeholder="Document type"
-            data={DocumentType.options}
-            radius="xl"
-            value={type}
-            onChange={setType}
-            required
-          />
-          <TextInput
-            label="Title (optional)"
-            radius="xl"
-            value={title}
-            onChange={(e) => setTitle(e.currentTarget.value)}
-          />
-          <PdfDrop label="PDF" file={file} onChange={setFile} />
-        </Group>
-        <Group>
-          <Button type="submit" loading={upload.isPending} disabled={!type || !file}>
-            Upload
-          </Button>
-        </Group>
+        <Select
+          label="Type"
+          placeholder="Document type"
+          data={DocumentType.options}
+          radius="xl"
+          value={type}
+          onChange={setType}
+          required
+        />
+        <TextInput
+          label="Title (optional)"
+          radius="xl"
+          value={title}
+          onChange={(e) => setTitle(e.currentTarget.value)}
+        />
+        <PdfDrop label="PDF" file={file} onChange={setFile} />
+        <Button type="submit" fullWidth loading={upload.isPending} disabled={!type || !file}>
+          Upload
+        </Button>
         {errMessage && (
           <Alert color="red" title="Upload failed">
             {errMessage}
@@ -133,7 +130,7 @@ function ListStats({ docs }: { docs: DocumentListItemDto[] }) {
   );
 }
 
-/** Home page: upload form plus the document table, polling while extractions run. */
+/** Home page: upload column plus stats and the document table, polling while extractions run. */
 export function DocumentList() {
   const docs = useQuery({
     queryKey: ['documents'],
@@ -144,59 +141,66 @@ export function DocumentList() {
   return (
     <Stack gap="lg">
       <Title order={1}>Your documents &amp; reviews</Title>
-      {docs.data && <ListStats docs={docs.data} />}
-      <Card p="lg">
-        <UploadForm />
-      </Card>
-      {docs.isPending && <Loader />}
-      {docs.isError && (
-        <Alert color="red" title="Could not load documents">
-          <Group>
-            <Text size="sm">{docs.error.message}</Text>
-            <Button size="xs" variant="light" onClick={() => void docs.refetch()}>
-              Retry
-            </Button>
-          </Group>
-        </Alert>
-      )}
-      {docs.data?.length === 0 && <Text c="dimmed">No documents yet — upload one above.</Text>}
-      {docs.data && docs.data.length > 0 && (
-        <Card p="md">
-          <Table
-            verticalSpacing="md"
-            horizontalSpacing="md"
-            highlightOnHover
-            highlightOnHoverColor={palette.panel}
-          >
-            <Table.Thead bg={palette.panel}>
-              <Table.Tr>
-                <Table.Th>Title</Table.Th>
-                <Table.Th>Type</Table.Th>
-                <Table.Th>Version</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Review</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {docs.data.map((d) => (
-                <Table.Tr key={d.id}>
-                  <Table.Td>
-                    <Anchor component={Link} to={`/documents/${d.id}`} c={palette.ink} fw={600}>
-                      {d.title}
-                    </Anchor>
-                  </Table.Td>
-                  <Table.Td>{d.type}</Table.Td>
-                  <Table.Td>v{d.versionNo}</Table.Td>
-                  <Table.Td>
-                    <StatusPill status={d.status} />
-                  </Table.Td>
-                  <Table.Td>{progressLabel(d.progress)}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+      {/* Upload column on the left (sticky), everything else in the main column. */}
+      <div className="list-layout">
+        <Card p="lg" className="list-side">
+          <UploadForm />
         </Card>
-      )}
+        <Stack gap="lg" className="list-main">
+          {docs.data && <ListStats docs={docs.data} />}
+          {docs.isPending && <Loader />}
+          {docs.isError && (
+            <Alert color="red" title="Could not load documents">
+              <Group>
+                <Text size="sm">{docs.error.message}</Text>
+                <Button size="xs" variant="light" onClick={() => void docs.refetch()}>
+                  Retry
+                </Button>
+              </Group>
+            </Alert>
+          )}
+          {docs.data?.length === 0 && <Text c="dimmed">No documents yet — upload one above.</Text>}
+          {docs.data && docs.data.length > 0 && (
+            <Card p="md">
+              {/* Styled by documentTable.css: ink pill header bar, rounded row hover. */}
+              <Table
+                className="doc-table"
+                verticalSpacing="md"
+                horizontalSpacing="md"
+                withColumnBorders={false}
+                withRowBorders={false}
+              >
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Title</Table.Th>
+                    <Table.Th>Type</Table.Th>
+                    <Table.Th>Version</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Review</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {docs.data.map((d) => (
+                    <Table.Tr key={d.id}>
+                      <Table.Td>
+                        <Anchor component={Link} to={`/documents/${d.id}`} c={palette.ink} fw={600}>
+                          {d.title}
+                        </Anchor>
+                      </Table.Td>
+                      <Table.Td>{d.type}</Table.Td>
+                      <Table.Td>v{d.versionNo}</Table.Td>
+                      <Table.Td>
+                        <StatusPill status={d.status} />
+                      </Table.Td>
+                      <Table.Td>{progressLabel(d.progress)}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Card>
+          )}
+        </Stack>
+      </div>
     </Stack>
   );
 }
