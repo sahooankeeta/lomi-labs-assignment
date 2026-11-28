@@ -40,7 +40,7 @@ written up in the README.
 - A value kept whose evidence isn't verbatim in its version's text, or a "best guess" for a missing
   field.
 - A re-run, retry or crash recovery producing duplicate or mixed (two runs interleaved) values.
-- Overwriting or deleting earlier versions, values or reviews.
+- Overwriting or deleting earlier versions, values or reviews (by re-extraction or a new version).
 
 ## Constraints
 

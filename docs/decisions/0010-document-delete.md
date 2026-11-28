@@ -37,3 +37,6 @@ explicit, confirmed removal of the whole document.
   each fixture every time).
 - Known gap: an upload of the same bytes in the instant between commit and file removal can
   lose its file; that version then shows `failed` and is retryable by re-uploading.
+- Known gap: an identical re-upload that lands while a delete of that same document is in
+  flight can dedupe onto the document being deleted. The upload returns that id, which then
+  404s, and its file may be removed as orphaned. The user simply uploads again.

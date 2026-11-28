@@ -76,6 +76,9 @@ export type ClaimResult =
  *   "extraction was interrupted 3 times". -> `capped`. The caller does nothing further.
  * - Anything else (live lease, extracted, failed, superseded, missing): -> `skipped`.
  *
+ * Also `skipped` when the document vanished right after the claim: a concurrent delete
+ * removed the version and its run with it.
+ *
  * Eligibility is checked inside a single conditional UPDATE, so two workers racing for
  * the same version get exactly one `claimed`; the loser sees count 0 and `skipped`.
  * Re-claiming over an expired lease replaces `activeRunId`, which is what locks the old
@@ -150,7 +153,7 @@ export async function claimVersion(
  * the active run of an `extracting` version (lease taken over, finished, failed): the
  * worker must stop and write nothing more.
  *
- * Called every 10 s by the worker while it runs, so a live worker never loses its claim
+ * Called every 10 s by the worker while it runs (and once before each chunk), so a live worker never loses its claim
  * (cases 1-4 in `LEASE_MS`). A `false` here is how a stalled worker (case 3) learns it
  * was replaced: the pipeline aborts its in-flight LLM calls and reports `stale`.
  */

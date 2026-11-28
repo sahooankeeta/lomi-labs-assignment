@@ -117,9 +117,10 @@ export async function processVersion(
   // Renewing every 10 s keeps this live run's claim, so the reconciler won't treat the
   // version as crashed; a failed renewal means another run took over (we stalled past the
   // lease), so we abort in-flight LLM calls via `lost` and write nothing more.
-  // It runs on its own timer, not between chunks: one LLM call can take minutes
-  // (retries and model fallback), far longer than the lease, and the lease must stay alive
-  // throughout or another worker would take the version mid-call.
+  // The timer keeps the lease alive during long single LLM calls: one call can take minutes
+  // (retries and model fallback), far longer than the lease, or another worker would take
+  // the version mid-call. A per-chunk renewLease check also stops a deleted or taken-over
+  // run before its next call.
   let renewing = false;
   const renewTimer = setInterval(() => {
     if (renewing) return;
@@ -264,7 +265,8 @@ export async function processVersion(
     }
     const message = err instanceof Error ? err.message : String(err);
     const wrote = await failVersion(db, versionId, runId, message);
-    rlog.error({ err: message }, 'failed');
+    if (wrote) rlog.error({ err: message }, 'failed');
+    else rlog.warn({ err: message }, 'stale: run no longer owns the version (taken over or deleted)');
     return wrote ? 'failed' : 'stale';
   } finally {
     clearInterval(renewTimer);
