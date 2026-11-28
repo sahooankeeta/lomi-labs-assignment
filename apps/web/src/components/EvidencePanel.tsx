@@ -65,8 +65,9 @@ export function EvidencePanel({
     if (tab === 'text') markRef.current?.scrollIntoView({ block: 'center' });
   }, [tab, selected?.id, selected?.evidenceStart, selected?.evidenceEnd]);
 
+  // Card surface and pill tabs come from the theme defaults (theme.ts).
   return (
-    <Card withBorder>
+    <Card p="md">
       <Tabs value={tab} onChange={setTab}>
         <Tabs.List>
           <Tabs.Tab value="pdf">PDF</Tabs.Tab>
@@ -78,7 +79,7 @@ export function EvidencePanel({
             <Group>
               <Button
                 size="xs"
-                variant="default"
+                variant="outline"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
               >
@@ -89,7 +90,7 @@ export function EvidencePanel({
               </Text>
               <Button
                 size="xs"
-                variant="default"
+                variant="outline"
                 disabled={page >= numPages}
                 onClick={() => setPage((p) => p + 1)}
               >
@@ -101,7 +102,8 @@ export function EvidencePanel({
                 {loadError}
               </Alert>
             )}
-            <div ref={box}>
+            {/* White page on the warm card, like a sheet of paper. */}
+            <div ref={box} style={{ background: '#fff', borderRadius: 12, overflow: 'hidden' }}>
               <Document
                 file={`/api/versions/${version.id}/file`}
                 loading={<Loader size="sm" />}
@@ -128,7 +130,7 @@ export function EvidencePanel({
           {seg === null ? (
             <Text c="dimmed">Text not parsed yet</Text>
           ) : (
-            <ScrollArea h={600}>
+            <ScrollArea h={600} bg="#fff" p="sm" style={{ borderRadius: 12 }}>
               <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
                 {seg.before}
                 {seg.match && <Mark ref={markRef}>{seg.match}</Mark>}

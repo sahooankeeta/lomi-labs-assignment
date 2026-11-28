@@ -15,14 +15,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { apiPost } from '../api';
 import { effectiveValue, previousLabel, primaryAction, type ReviewBody } from '../lib/values';
+import { palette } from '../theme';
 import { PreviousBlock } from './PreviousBlock';
 import { ValueHistory } from './ValueHistory';
 
-const STATE_COLOR: Record<ValueReviewState, string> = {
-  pending: 'orange',
-  approved: 'green',
-  corrected: 'blue',
-  carried_over: 'gray',
+// Same pastels as the review ring, always under ink text; the pill keeps the state's name.
+const STATE_BG: Record<ValueReviewState, string> = {
+  pending: palette.blush,
+  approved: palette.sage,
+  corrected: palette.sky,
+  carried_over: palette.butter,
 };
 
 interface Props {
@@ -75,12 +77,13 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
   return (
     <Card
       withBorder
-      padding="sm"
+      padding="md"
       onClick={() => onSelect(value.id)}
       style={{
         cursor: 'pointer',
-        borderColor: selected ? 'var(--mantine-color-blue-6)' : undefined,
-        borderWidth: selected ? 2 : undefined,
+        // The selected card gets an ink outline (not just a tint) so it reads without colour.
+        borderColor: selected ? palette.ink : palette.line,
+        borderWidth: selected ? 2 : 1,
       }}
     >
       <Stack gap="xs">
@@ -91,12 +94,14 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
               {value.fieldType}
             </Text>
             {isGap && (
-              <Badge color="yellow" variant="light">
+              <Badge bg={palette.butter} c={palette.ink}>
                 Gap
               </Badge>
             )}
           </Group>
-          <Badge color={STATE_COLOR[value.reviewState]}>{value.reviewState}</Badge>
+          <Badge bg={STATE_BG[value.reviewState]} c={palette.ink} fw={500}>
+            {value.reviewState}
+          </Badge>
         </Group>
 
         {corrected ? (
@@ -130,7 +135,8 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
               <Button
                 key={`${c.value}-${c.page}`}
                 size="compact-xs"
-                variant="light"
+                variant="white"
+                c="ink"
                 disabled={disabled}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -193,7 +199,7 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
                 <Button type="submit" size="xs" disabled={disabled || draft.trim() === ''}>
                   Save
                 </Button>
-                <Button size="xs" variant="default" onClick={() => setEditing(false)}>
+                <Button size="xs" variant="outline" onClick={() => setEditing(false)}>
                   Cancel
                 </Button>
               </Group>
@@ -213,7 +219,7 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
             </Button>
             <Button
               size="xs"
-              variant="default"
+              variant="outline"
               disabled={disabled}
               onClick={(e) => {
                 e.stopPropagation();

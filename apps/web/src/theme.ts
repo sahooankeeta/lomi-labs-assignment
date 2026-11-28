@@ -1,0 +1,98 @@
+import {
+  Badge,
+  Blockquote,
+  Button,
+  Card,
+  createTheme,
+  type CSSVariablesResolver,
+  type MantineColorsTuple,
+  Modal,
+  Tabs,
+} from '@mantine/core';
+
+/**
+ * The pastel dashboard palette (cream page, black ink, pink/blue/yellow/green pastels).
+ * Pastels are only ever backgrounds under `palette.ink` text, which keeps contrast far above
+ * 4.5:1; they are never used as text colours themselves.
+ */
+export const palette = {
+  /** Page background. */
+  cream: '#F6F1E7',
+  /** The large rounded panel the app sits in. */
+  panel: '#FBF8F2',
+  /** Card surface: warm light grey. */
+  surface: '#ECE7DE',
+  /** Hairline borders on the cream/surface tones. */
+  line: '#DDD5C7',
+  /** Near-black for text, the sidebar and primary buttons. */
+  ink: '#111111',
+  /** Muted text on cream and pastels (still ≥ 4.5:1 on all of them). */
+  muted: '#55514A',
+  blush: '#F4B8D8',
+  sky: '#B9CCEC',
+  butter: '#F6DC7A',
+  sage: '#9DC07A',
+  /** Failure pill: a pastel red, still under ink text. */
+  rose: '#F2B4AA',
+} as const;
+
+// Index 6 is what `filled` buttons use, so it is the ink itself: Mantine's primary
+// button becomes the reference's black pill without overriding every Button.
+const ink: MantineColorsTuple = [
+  '#F4F2EE',
+  '#E6E2DA',
+  '#CFC9BE',
+  '#A8A196',
+  '#7A746A',
+  '#4A4640',
+  '#111111',
+  '#000000',
+  '#000000',
+  '#000000',
+];
+
+/** Mantine theme for the review UI: ink primary colour, pill buttons, soft rounded cards. */
+export const theme = createTheme({
+  primaryColor: 'ink',
+  colors: { ink },
+  black: palette.ink,
+  // System stack (Inter first if the machine has it): no font dependency is added.
+  fontFamily:
+    'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  headings: {
+    fontWeight: '600',
+    sizes: {
+      h1: { fontSize: '2.5rem', lineHeight: '1.1' },
+      h2: { fontSize: '1.75rem', lineHeight: '1.2' },
+    },
+  },
+  defaultRadius: 'md',
+  radius: { md: '12px', lg: '16px', xl: '24px' },
+  // Keep Mantine's keyboard focus ring (shown on :focus-visible); the restyle must not hide it.
+  focusRing: 'auto',
+  components: {
+    Button: Button.extend({ defaultProps: { radius: 'xl' } }),
+    Badge: Badge.extend({ defaultProps: { radius: 'xl', tt: 'none' } }),
+    Card: Card.extend({
+      defaultProps: { radius: 'lg', bg: palette.surface, shadow: 'none' },
+    }),
+    Tabs: Tabs.extend({ defaultProps: { variant: 'pills', radius: 'xl' } }),
+    Blockquote: Blockquote.extend({ defaultProps: { color: 'ink', radius: 'md' } }),
+    Modal: Modal.extend({ defaultProps: { radius: 'lg' } }),
+  },
+});
+
+/** Sets the page (body) colour to cream; the app has no dark mode, so only light is set. */
+export const cssVariablesResolver: CSSVariablesResolver = () => ({
+  variables: {},
+  light: {
+    '--mantine-color-body': palette.cream,
+    '--mantine-color-text': palette.ink,
+    '--mantine-color-dimmed': palette.muted,
+    // Mantine's grey disabled fill vanishes on the warm surface; a warmer, darker pair keeps
+    // disabled buttons (e.g. "Upload" before a file is chosen) visible.
+    '--mantine-color-disabled': '#DCD5C8',
+    '--mantine-color-disabled-color': '#6B655B',
+  },
+  dark: {},
+});

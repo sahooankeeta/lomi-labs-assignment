@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Select, Stack } from '@mantine/core';
+import { Alert, Button, Group, Stack, Text } from '@mantine/core';
 import type { DocumentSummaryDto, VersionSummaryDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -20,6 +20,8 @@ interface Props {
 /**
  * Version switcher plus, on the current version only, the "Upload new version" control.
  * The shown version lives in the `?version=N` search param, so it survives reloads and links.
+ * Versions are a row of filter pills (active one black) rather than a select, matching the
+ * dashboard look; each pill's text still names the version and its status.
  */
 export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
   const queryClient = useQueryClient();
@@ -55,29 +57,41 @@ export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
   };
 
   return (
-    <Stack gap="xs">
-      <Group align="flex-end">
-        <Select
-          label="Version"
-          data={versionOptionsOrFallback(versions.data, versionNo, currentVersionNo)}
-          value={String(versionNo)}
-          onChange={choose}
-          allowDeselect={false}
-          w={240}
-        />
-        {versionNo === currentVersionNo && (
-          <>
-            <PdfDrop label="New version" file={file} onChange={setFile} />
-            <Button
-              loading={upload.isPending}
-              disabled={!file}
-              onClick={() => file && upload.mutate(file)}
-            >
-              Upload new version
-            </Button>
-          </>
-        )}
-      </Group>
+    <Stack gap="md">
+      <Stack gap={6}>
+        <Text fw={600} fz="lg" id="version-pills">
+          Versions
+        </Text>
+        <Group gap="xs" role="group" aria-labelledby="version-pills">
+          {versionOptionsOrFallback(versions.data, versionNo, currentVersionNo).map((o) => {
+            const active = o.value === String(versionNo);
+            return (
+              <Button
+                key={o.value}
+                size="xs"
+                variant={active ? 'filled' : 'white'}
+                c={active ? undefined : 'ink'}
+                aria-pressed={active}
+                onClick={() => !active && choose(o.value)}
+              >
+                {o.label}
+              </Button>
+            );
+          })}
+        </Group>
+      </Stack>
+      {versionNo === currentVersionNo && (
+        <Group align="flex-end">
+          <PdfDrop label="New version" file={file} onChange={setFile} />
+          <Button
+            loading={upload.isPending}
+            disabled={!file}
+            onClick={() => file && upload.mutate(file)}
+          >
+            Upload new version
+          </Button>
+        </Group>
+      )}
       {upload.isError && (
         <Alert color="red" title="Upload failed">
           {uploadErrorMessage(upload.error)}

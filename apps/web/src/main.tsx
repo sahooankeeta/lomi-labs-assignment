@@ -8,12 +8,13 @@ import { BrowserRouter, Route, Routes } from 'react-router';
 import { Layout } from './Layout';
 import { DocumentDetail } from './pages/DocumentDetail';
 import { DocumentList } from './pages/DocumentList';
+import { cssVariablesResolver, theme } from './theme';
 
 const queryClient = new QueryClient();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MantineProvider>
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <Routes>

@@ -1,4 +1,15 @@
-import { Alert, Anchor, Button, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Button,
+  Card,
+  Grid,
+  Group,
+  Loader,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import type { DocumentDetailDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -6,6 +17,7 @@ import { useParams, useSearchParams } from 'react-router';
 import { apiGet, apiPost } from '../api';
 import { DeleteDocumentButton } from '../components/DeleteDocumentButton';
 import { EvidencePanel } from '../components/EvidencePanel';
+import { ReviewRing } from '../components/ReviewRing';
 import { StatusPill } from '../components/StatusPill';
 import { ValueCard } from '../components/ValueCard';
 import { VersionBar } from '../components/VersionBar';
@@ -66,14 +78,18 @@ export function DocumentDetail() {
   ];
 
   return (
-    <Stack>
-      <Group>
-        <Title order={2}>{d.title}</Title>
-        <Text c="dimmed">
-          {d.type} · v{d.version.versionNo}
-        </Text>
-        <StatusPill status={d.status} />
-        <Text size="sm">{progressLabel(d.progress)}</Text>
+    <Stack gap="lg">
+      <Group justify="space-between" align="flex-start" wrap="nowrap">
+        <Stack gap={6}>
+          <Title order={1}>{d.title}</Title>
+          <Group gap="sm">
+            <Text c="dimmed">
+              {d.type} · v{d.version.versionNo}
+            </Text>
+            <StatusPill status={d.status} />
+            <Text size="sm">{progressLabel(d.progress)}</Text>
+          </Group>
+        </Stack>
         <DeleteDocumentButton
           documentId={id}
           title={d.title}
@@ -81,11 +97,21 @@ export function DocumentDetail() {
         />
       </Group>
 
-      <VersionBar
-        documentId={id}
-        versionNo={d.version.versionNo}
-        currentVersionNo={d.currentVersionNo}
-      />
+      <Group gap="md" align="stretch" wrap="nowrap">
+        <Card p="lg" style={{ flexShrink: 0 }}>
+          <Text fw={600} fz="lg" mb="sm">
+            Review progress
+          </Text>
+          <ReviewRing progress={d.progress} />
+        </Card>
+        <Card p="lg" style={{ flex: 1, minWidth: 0 }}>
+          <VersionBar
+            documentId={id}
+            versionNo={d.version.versionNo}
+            currentVersionNo={d.currentVersionNo}
+          />
+        </Card>
+      </Group>
 
       {!isCurrent && (
         <Alert color="gray">
@@ -126,7 +152,9 @@ export function DocumentDetail() {
               ([heading, items]) =>
                 items.length > 0 && (
                   <Stack key={heading} gap="xs">
-                    <Title order={4}>{heading}</Title>
+                    <Title order={3} fz="lg">
+                      {heading}
+                    </Title>
                     {items.map((v) => (
                       <ValueCard
                         key={v.id}

@@ -58,7 +58,8 @@ export function DeleteDocumentButton({ documentId, title, currentVersionNo }: Pr
 
   return (
     <>
-      <Button color="red" variant="light" size="xs" onClick={open}>
+      {/* A pastel-red pill with dark red text: stands apart from the black primary pills. */}
+      <Button color="red" variant="light" c="red.9" size="sm" onClick={open}>
         Delete
       </Button>
       <Modal opened={opened} onClose={() => setOpened(false)} title={`Delete "${title}"?`}>
