@@ -1,15 +1,4 @@
-import {
-  Alert,
-  Badge,
-  Blockquote,
-  Button,
-  Card,
-  Group,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-} from '@mantine/core';
+import { Alert, Badge, Button, Card, Group, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import type { ReviewResultDto, ValueDto, ValueReviewState } from '@lomi/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -39,7 +28,7 @@ interface Props {
 }
 
 /**
- * One extracted field: its value, gap reason or evidence, review state, and the
+ * One extracted field: its value and evidence page, gap reason, review state, and the
  * Approve / Correct actions. Each action is sent immediately as one review (no drafts).
  */
 export function ValueCard({ value, selected, onSelect, canReview, documentId }: Props) {
@@ -90,9 +79,6 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
         <Group justify="space-between">
           <Group gap="xs">
             <Text fw={600}>{value.field}</Text>
-            <Text size="xs" c="dimmed">
-              {value.fieldType}
-            </Text>
             {isGap && (
               <Badge bg={palette.butter} c={palette.ink}>
                 Gap
@@ -104,17 +90,27 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
           </Badge>
         </Group>
 
-        {corrected ? (
-          <Group gap="xs">
-            <Text>{effective}</Text>
-            {value.value !== null && (
-              <Text td="line-through" c="dimmed">
-                {value.value}
+        {/* The value, with its evidence page on the right. The quote itself is not repeated
+            on the card: selecting the card jumps the PDF to the page and the Text tab
+            highlights it. */}
+        {!isGap && (
+          <Group justify="space-between" wrap="nowrap" align="baseline">
+            {corrected ? (
+              <Group gap="xs">
+                <Text>{effective}</Text>
+                <Text td="line-through" c="dimmed">
+                  {value.value}
+                </Text>
+              </Group>
+            ) : (
+              <Text>{value.value}</Text>
+            )}
+            {value.evidencePage !== null && (
+              <Text size="sm" fs="italic" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                page {value.evidencePage}
               </Text>
             )}
           </Group>
-        ) : (
-          !isGap && <Text>{value.value}</Text>
         )}
 
         {label && (
@@ -147,15 +143,6 @@ export function ValueCard({ value, selected, onSelect, canReview, documentId }: 
               </Button>
             ))}
           </Group>
-        )}
-
-        {value.evidence && (
-          <Blockquote
-            p="xs"
-            cite={value.evidencePage !== null ? `page ${value.evidencePage}` : undefined}
-          >
-            {value.evidence}
-          </Blockquote>
         )}
 
         {value.previous && (

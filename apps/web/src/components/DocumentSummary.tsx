@@ -1,7 +1,7 @@
 import { Group, Stack, Text, Title } from '@mantine/core';
 import type { DocumentDetailDto } from '@lomi/shared';
 import { Link } from 'react-router';
-import { progressLabel } from '../lib/format';
+import { shortDate } from '../lib/format';
 import { DeleteDocumentButton } from './DeleteDocumentButton';
 import { DocumentTypePill } from './DocumentTypePill';
 import { NewVersionUpload } from './NewVersionUpload';
@@ -39,7 +39,7 @@ interface Props {
 
 /**
  * The detail page's sidebar content: back link, delete, title and status pills, review
- * progress and the new-version upload (the version picker is VersionTiles in the main panel). Rendered by DocumentDetail into the sidebar slot (it owns the
+ * progress and the new-version upload (the version picker is VersionTimeline in the main panel). Rendered by DocumentDetail into the sidebar slot (it owns the
  * document query, so nothing is fetched twice). Blocks are slightly lighter charcoal panels;
  * the title is clamped to two lines with the full text in `title`.
  */
@@ -67,8 +67,11 @@ export function DocumentSummary({ d, id, isCurrent }: Props) {
           ) : (
             <StatusPill status={d.status} />
           )}
-          <Text fz="sm">{progressLabel(d.progress)}</Text>
         </Group>
+        {/* Upload time of the shown version (the version timeline shows only the number). */}
+        <Text fz="sm" c="dimmed">
+          Uploaded {shortDate(d.version.createdAt)}
+        </Text>
       </Stack>
       <div className="summary-panel">
         <Text fw={600} fz="md" mb={12}>

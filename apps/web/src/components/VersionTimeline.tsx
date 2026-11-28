@@ -6,10 +6,9 @@ import { useSearchParams } from 'react-router';
 import { apiGet } from '../api';
 import { pollInterval } from '../lib/poll';
 import { versionPage } from '../lib/versions';
-import { StatusPill } from './StatusPill';
 
-/** Tiles per page. The grid always has this many columns so its width never changes. */
-const PAGE_SIZE = 6;
+/** Steps per page. The row always has this many slots so the steps never shift. */
+const PAGE_SIZE = 10;
 
 interface Props {
   documentId: string;
@@ -19,26 +18,15 @@ interface Props {
   currentVersionNo: number;
 }
 
-const dateFmt = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
-
-/** Short upload time such as "Nov 28, 14:02". */
-function shortDate(iso: string): string {
-  return dateFmt.format(new Date(iso)).replace(' at ', ', ');
-}
-
 /**
- * Version picker: a paginated row of tiles on top of the detail page's main panel.
- * Paginated rather than scrolled because the row has a fixed height (the review below must
- * not jump) and the owner chose pages over a scrolling strip. The shown version lives in the
- * `?version=N` param; choosing the current version clears it, as before.
+ * Version picker: a horizontal timeline of numbered steps on top of the detail page's main
+ * panel, oldest on the left. The current version is filled; an older version being viewed
+ * gets a ring. Only numbers are shown (status and upload time of the shown version are in the
+ * sidebar). Paginated rather than scrolled because the row has a fixed height (the review
+ * below must not jump) and the owner chose pages over a scrolling strip. The shown version
+ * lives in the `?version=N` param; choosing the current version clears it, as before.
  */
-export function VersionTiles({ documentId, versionNo, currentVersionNo }: Props) {
+export function VersionTimeline({ documentId, versionNo, currentVersionNo }: Props) {
   const [, setParams] = useSearchParams();
   // null = the page holding the shown version; set only once the user pages manually.
   const [page, setPage] = useState<number | null>(null);
@@ -66,8 +54,12 @@ export function VersionTiles({ documentId, versionNo, currentVersionNo }: Props)
   const total = versions.data?.length ?? 0;
   const view = versionPage(versions.data ?? [], versionNo, page, PAGE_SIZE);
 
+  // versionPage pages newest first (page 0 = newest); each page is drawn oldest-left, so
+  // the left arrow moves to older versions (a higher page number).
+  const steps = [...view.items].reverse();
+
   return (
-    <section className="version-tiles" aria-label="Versions">
+    <section aria-label="Versions">
       <Group justify="space-between" mb={10} h={28}>
         <Text fw={600} fz="md">
           Versions{versions.data ? ` (${total})` : ''}
@@ -77,22 +69,18 @@ export function VersionTiles({ documentId, versionNo, currentVersionNo }: Props)
             <ActionIcon
               variant="default"
               size="sm"
-              aria-label="Previous versions"
-              // Page 0 holds the newest versions, so "previous" moves toward 0.
-              disabled={view.page === 0}
-              onClick={() => setPage(view.page - 1)}
+              aria-label="Older versions"
+              disabled={view.page === view.pageCount - 1}
+              onClick={() => setPage(view.page + 1)}
             >
               ‹
             </ActionIcon>
-            <Text fz="sm">
-              {view.page + 1} / {view.pageCount}
-            </Text>
             <ActionIcon
               variant="default"
               size="sm"
-              aria-label="Next versions"
-              disabled={view.page === view.pageCount - 1}
-              onClick={() => setPage(view.page + 1)}
+              aria-label="Newer versions"
+              disabled={view.page === 0}
+              onClick={() => setPage(view.page - 1)}
             >
               ›
             </ActionIcon>
@@ -100,39 +88,36 @@ export function VersionTiles({ documentId, versionNo, currentVersionNo }: Props)
         )}
       </Group>
       {versions.isPending ? (
-        <div className="version-grid">
-          {Array.from({ length: PAGE_SIZE }, (_, i) => (
-            <Skeleton key={i} h={92} radius={14} />
-          ))}
-        </div>
+        <Skeleton h={36} radius="xl" />
       ) : versions.isError ? (
         <Text fz="sm" c="red">
           Could not load versions.
         </Text>
       ) : (
-        <div className="version-grid">
-          {view.items.map((v) => {
-            const active = v.versionNo === versionNo;
+        <ol className="version-steps">
+          {steps.map((v) => {
+            const shown = v.versionNo === versionNo;
+            const current = v.versionNo === currentVersionNo;
+            const cls = ['version-step-dot'];
+            if (current) cls.push('version-step-current');
+            if (shown) cls.push('version-step-shown');
+            if (v.status === 'failed') cls.push('version-step-failed');
             return (
-              <button
-                key={v.id}
-                type="button"
-                className={active ? 'version-tile version-tile-active' : 'version-tile'}
-                aria-pressed={active}
-                onClick={() => !active && choose(v.versionNo)}
-              >
-                <span className="version-tile-head">
-                  <b>v{v.versionNo}</b>
-                  {v.versionNo === currentVersionNo && (
-                    <span className="version-tile-current">current</span>
-                  )}
-                </span>
-                <StatusPill status={v.status} />
-                <span className="version-tile-date">{shortDate(v.createdAt)}</span>
-              </button>
+              <li key={v.id} className="version-step">
+                <button
+                  type="button"
+                  className={cls.join(' ')}
+                  aria-current={shown ? 'page' : undefined}
+                  aria-label={`Version ${v.versionNo}${current ? ', current' : ''} (${v.status})`}
+                  title={`v${v.versionNo} · ${v.status}`}
+                  onClick={() => !shown && choose(v.versionNo)}
+                >
+                  {v.versionNo}
+                </button>
+              </li>
             );
           })}
-        </div>
+        </ol>
       )}
     </section>
   );

@@ -13,7 +13,7 @@ interface Props {
 /**
  * The sidebar's "New version" upload (drop area plus button). Only offered while the current
  * version is shown, since only it can be replaced; the parent decides that. The version
- * picker itself lives in VersionTiles above the review.
+ * picker itself lives in VersionTimeline above the review.
  */
 export function NewVersionUpload({ documentId }: Props) {
   const queryClient = useQueryClient();

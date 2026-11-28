@@ -95,60 +95,68 @@
   text-decoration: none;
   white-space: nowrap;
 }
-/* Version tiles (top of the detail page): a fixed 6-column grid so the row width and height
-   never change between pages. The shown tile is charcoal with cream text; others are surface. */
-.version-grid {
+/* Version timeline (top of the detail page): a fixed 10-slot row of numbered dots joined by
+   a line, so the dots never shift between pages. Current = charcoal fill with cream text;
+   an older shown version = charcoal ring; failed = rose fill. Ink on surface is 15.3:1 and
+   cream on charcoal 12.5:1. */
+.version-steps {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.version-tile {
+.version-step {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  min-height: 92px;
-  min-width: 0;
-  padding: 10px 12px;
+  justify-content: center;
+}
+/* The connector from the previous dot's centre to this one's (none before the first). */
+.version-step + .version-step::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -50%;
+  right: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: #cfc7b8;
+}
+.version-step-dot {
+  position: relative;
+  z-index: 1; /* above the next step's connector, which is painted later */
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   border: 1px solid #ddd6c8;
-  border-radius: 14px;
   background: #ece7de;
   color: #111111;
   font: inherit;
-  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
 }
-.version-tile:hover {
+.version-step-dot:hover {
   background: #e2dcd0;
 }
-.version-tile:focus-visible {
+.version-step-dot:focus-visible {
   outline: 2px solid #2e2b27;
   outline-offset: 2px;
 }
-.version-tile.version-tile-active,
-.version-tile.version-tile-active:hover {
+.version-step-dot.version-step-failed {
+  background: #f2b4aa;
+  border-color: #f2b4aa;
+}
+.version-step-dot.version-step-shown {
+  border: 2px solid #2e2b27;
+  box-shadow: 0 0 0 3px #fbf8f2; /* panel colour, a gap inside the ring */
+  cursor: default;
+}
+.version-step-dot.version-step-current,
+.version-step-dot.version-step-current:hover {
   background: #2e2b27;
   border-color: #2e2b27;
   color: #f6f1e7;
-  cursor: default;
-}
-.version-tile.version-tile-active:focus-visible {
-  outline-color: #8a8478;
-}
-.version-tile-head {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 15px;
-}
-.version-tile-current {
-  font-size: 11px;
-  opacity: 0.75;
-}
-.version-tile-date {
-  font-size: 12px;
-  opacity: 0.8;
-  white-space: nowrap;
 }
 /* Pushes API health to the bottom when the form is short. */
 .app-sidebar-foot {
@@ -188,4 +196,82 @@
 .field-option:hover,
 .field-option[data-combobox-selected] {
   background: #ece7de;
+}
+
+/*
+ * Detail page: exactly one screen tall, so the versions row never scrolls away. 90px is
+ * everything around main: the 12px outer inset and 12px panel padding (top and bottom), the
+ * panel's 1px borders and main's 20px vertical padding. The review list and the evidence card
+ * split the remaining height equally in width and match in height; each scrolls inside itself
+ * (scrollbars hidden, like the documents table).
+ */
+.detail-page {
+  height: calc(100vh - 90px);
+}
+.detail-page > * {
+  flex-shrink: 0;
+}
+.detail-page > .detail-columns {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.detail-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.detail-review {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  /* Room for the selected card's outline, which overflow would otherwise clip. */
+  padding: 2px;
+  margin: -2px;
+}
+.detail-review::-webkit-scrollbar,
+.evidence-paper::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+.evidence-card {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.evidence-tabs {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.evidence-tab-panel {
+  flex: 1 1 0;
+  min-height: 0;
+}
+/* White page on the warm card, like a sheet of paper; a long page scrolls inside it. */
+.evidence-paper {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: #fff;
+  border-radius: 12px;
+}
+.evidence-text {
+  box-sizing: border-box;
+  padding: 10px;
+}
+@media (max-width: 1000px) {
+  .detail-page {
+    height: auto;
+  }
+  .detail-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .detail-review {
+    overflow: visible;
+  }
+  .evidence-card {
+    height: 80vh;
+  }
 }

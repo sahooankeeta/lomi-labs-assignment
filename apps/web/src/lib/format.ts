@@ -40,3 +40,16 @@ export function dropRejectionMessage(codes: string[]): string {
   if (codes.includes('too-many-files')) return 'drop one PDF at a time';
   return 'file was rejected';
 }
+
+const dateFmt = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+/** Short upload time such as "Nov 28, 14:02" (local time, 24-hour). */
+export function shortDate(iso: string): string {
+  return dateFmt.format(new Date(iso)).replace(' at ', ', ');
+}

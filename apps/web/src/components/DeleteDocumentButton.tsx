@@ -43,7 +43,7 @@ function TrashIcon() {
 
 /**
  * "Delete" button plus its confirmation modal. The modal lists every version that will go
- * (shared `['versions', id]` cache with VersionTiles). Deletion is whole-document on purpose:
+ * (shared `['versions', id]` cache with VersionTimeline). Deletion is whole-document on purpose:
  * earlier versions must stay queryable, so there is no per-version delete. After a delete the
  * user lands on the list (see `leave`).
  */

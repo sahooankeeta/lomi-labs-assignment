@@ -1,4 +1,4 @@
-import { Alert, Anchor, Button, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Button, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import type { DocumentDetailDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -7,7 +7,7 @@ import { apiGet, apiPost } from '../api';
 import { DocumentSummary } from '../components/DocumentSummary';
 import { SidebarPortal } from '../components/SidebarSlot';
 import { EvidencePanel } from '../components/EvidencePanel';
-import { VersionTiles } from '../components/VersionTiles';
+import { VersionTimeline } from '../components/VersionTimeline';
 import { ValueCard } from '../components/ValueCard';
 import { pollInterval } from '../lib/poll';
 import { groupValues } from '../lib/values';
@@ -78,13 +78,15 @@ export function DocumentDetail() {
   ];
 
   return (
-    <Stack gap="lg">
+    // `detail-page` is a full-height column: the versions row and any alerts keep their size
+    // and the review / evidence columns share the rest, each scrolling inside itself.
+    <Stack gap="lg" className="detail-page">
       {/* Summary (title, progress, versions, delete) lives in the sidebar, not the main panel. */}
       <SidebarPortal>
         <DocumentSummary d={d} id={id} isCurrent={isCurrent} />
       </SidebarPortal>
 
-      <VersionTiles
+      <VersionTimeline
         documentId={id}
         versionNo={d.version.versionNo}
         currentVersionNo={d.currentVersionNo}
@@ -122,8 +124,8 @@ export function DocumentDetail() {
         <Text c="dimmed">No fields defined for this type.</Text>
       )}
 
-      <Grid>
-        <Grid.Col span={6}>
+      <div className="detail-columns">
+        <div className="detail-review">
           <Stack>
             {sections.map(
               ([heading, items]) =>
@@ -146,14 +148,12 @@ export function DocumentDetail() {
                 ),
             )}
           </Stack>
-        </Grid.Col>
-        <Grid.Col span={6}>
-          <EvidencePanel
-            version={d.version}
-            selected={d.values.find((v) => v.id === selected) ?? null}
-          />
-        </Grid.Col>
-      </Grid>
+        </div>
+        <EvidencePanel
+          version={d.version}
+          selected={d.values.find((v) => v.id === selected) ?? null}
+        />
+      </div>
     </Stack>
   );
 }
