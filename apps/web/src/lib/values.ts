@@ -58,7 +58,8 @@ export function previousLabel(v: ValueDto): string | null {
 }
 
 /** Body of a review request, as `POST /values/:id/review` takes it. */
-export type ReviewBody = { action: 'approve' } | { action: 'correct'; value: string; note?: string };
+export type ReviewBody =
+  { action: 'approve' } | { action: 'correct'; value: string; note?: string };
 
 /**
  * The card's primary button. A value that carries a correction and has no review of its own

@@ -112,6 +112,8 @@ For the compose stack (http://localhost:8080), rebuild the images one service at
 4. **Evidence.** Clicking a value jumps the PDF to its page without switching tabs; if the Text tab is open, it scrolls to the quote, highlighted in `<mark>`.
 5. **Versions.** The detail header has a version picker (`?version=N` in the URL) and, on the current version, "Upload new version" (an identical file just refreshes). Older versions open read only, with a link back to the current one. A card whose previous version had a value shows a one-line label (for example `carried over from v1 (approved)` or `was $5,230.29 in v1 (not reviewed)`), the previous quote beside it, and, with more than one earlier version, a History drawer listing every version's value, quote and reviews.
 
+6. **Delete.** Delete (detail page) removes the document and all its versions after a confirmation that lists them; there is no per-version delete, since earlier versions must stay queryable. It works on any status, including while extracting (the worker stops at the next chunk). The seed re-adds deleted fixture documents on the next boot.
+
 The UI uses Mantine; the review model and that choice are in [0008](docs/decisions/0008-reviews.md).
 
 ## Versions and carry-over

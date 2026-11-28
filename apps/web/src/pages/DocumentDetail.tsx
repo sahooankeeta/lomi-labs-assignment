@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { apiGet, apiPost } from '../api';
+import { DeleteDocumentButton } from '../components/DeleteDocumentButton';
 import { EvidencePanel } from '../components/EvidencePanel';
 import { StatusPill } from '../components/StatusPill';
 import { ValueCard } from '../components/ValueCard';
@@ -73,6 +74,11 @@ export function DocumentDetail() {
         </Text>
         <StatusPill status={d.status} />
         <Text size="sm">{progressLabel(d.progress)}</Text>
+        <DeleteDocumentButton
+          documentId={id}
+          title={d.title}
+          currentVersionNo={d.currentVersionNo}
+        />
       </Group>
 
       <VersionBar
