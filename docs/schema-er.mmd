@@ -1,0 +1,68 @@
+erDiagram
+    documents ||--o{ document_versions : "has versions"
+    documents |o--o| document_versions : "current_version_id"
+    document_versions ||--o{ extraction_runs : "attempts"
+    document_versions ||--o{ version_chunks : "chunk plan"
+    document_versions ||--o{ chunk_results : "LLM answers"
+    document_versions ||--o{ extracted_values : "one per field"
+    extracted_values ||--o{ reviews : "append-only history"
+    extracted_values |o--o{ extracted_values : "previous_value_id"
+    reviews |o--o{ extracted_values : "carried_review_id"
+
+    documents {
+        uuid id PK
+        document_type type
+        text title
+        uuid current_version_id FK, UK "nullable"
+    }
+    document_versions {
+        uuid id PK
+        uuid document_id FK "unique with version_no"
+        int version_no
+        text file_key "sha256.pdf"
+        text sha256
+        version_status status
+        text parsed_text "never rewritten"
+        uuid active_run_id "lease owner"
+        timestamptz lease_expires_at
+    }
+    extraction_runs {
+        uuid id PK
+        uuid version_id FK
+        run_status status
+        text model
+        text error
+    }
+    version_chunks {
+        uuid version_id PK, FK
+        int chunk_index PK
+        int start
+        int end
+        int tokens
+    }
+    chunk_results {
+        uuid version_id PK, FK
+        int chunk_index PK
+        text prompt_version PK
+        uuid run_id
+        jsonb raw_response
+        jsonb candidates
+    }
+    extracted_values {
+        uuid id PK
+        uuid version_id FK "unique with field"
+        text field
+        text value "null means gap"
+        text evidence
+        text gap_reason "CHECK value_xor_gap"
+        uuid previous_value_id FK
+        uuid carried_review_id FK
+    }
+    reviews {
+        uuid id PK
+        uuid value_id FK
+        review_action action "approve or correct"
+        text corrected_value "required when action is correct"
+        text note
+        timestamptz created_at
+    }

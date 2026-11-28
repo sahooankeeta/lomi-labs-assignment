@@ -2,7 +2,7 @@
 
 This app pulls structured fields out of uploaded PDFs and shows each one to a person to check. A background worker sends the parsed text to Google Gemini (or a deterministic fake extractor). It keeps a value only when the value's quoted evidence appears in the text; otherwise it records a gap with a reason. A reviewer approves or corrects each value beside its quote. When a new version of a document is uploaded, a review carries over only if both the value and its quote are unchanged. Job state lives in Postgres, so extraction resumes after a worker restart, a Redis flush or a superseding upload.
 
-**What has been verified, and how:** unit and Postgres integration tests ([Checks](#checks)); `scripts/verify-phase1.sh` and `scripts/chaos.sh` against the compose stack using the fake extractor (last run 2026-11-28, all checks passed, see [Verify](#verify)); and one live Gemini run on the three bundled fixtures (16/16 fields, 2026-11-27). **What has not:** the UI has no scripted tests (it was clicked through by hand), Gemini was tried on only three short documents, and there is no auth, OCR or deployment ([What I cut](#what-i-cut-and-whats-next)). Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
+**What has been verified, and how:** unit and Postgres integration tests ([Checks](#checks)); `scripts/verify-phase1.sh` and `scripts/chaos.sh` against the compose stack using the fake extractor (last run 2026-11-28, all checks passed, see [Verify](#verify)); and two live Gemini runs on the three bundled fixtures (16/16 fields each, 2026-11-27 and 2026-11-28). **What has not:** the UI has no scripted tests (it was clicked through by hand), Gemini was tried on only three short documents, and there is no auth, OCR or deployment ([What I cut](#what-i-cut-and-whats-next)). Design: [`docs/superpowers/specs/2026-11-26-extraction-review-design.md`](docs/superpowers/specs/2026-11-26-extraction-review-design.md). Decisions: [`docs/decisions/`](docs/decisions/).
 
 > The spec named Claude. The project owner removed it to avoid a paid API, so Gemini (free tier) is the only real provider.
 
@@ -232,104 +232,56 @@ fixtures/      Sample PDFs and manifests from the assignment.
 
 ```sh
 EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 docker compose up -d   # build services one at a time first
-bash scripts/verify-phase1.sh        # PASS/FAIL per check, non-zero exit on failure; restores the worker itself
-bash scripts/chaos.sh                # the brief's failure scenarios, end state checked via the API only
+bash scripts/verify-phase1.sh   # seeded docs, restart, double upload, FLUSHALL, SIGKILL, no duplicate values
+bash scripts/chaos.sh           # restart, FLUSHALL, re-upload, v2 during v1, delete mid-extraction, sweep (API only)
 ```
 
-`chaos.sh` runs, in order: (A) worker restart mid-extraction; (B) `FLUSHALL` plus restart of worker and api mid-extraction; (C) re-upload of B's file after the restart (200, same id, still one version); (D) v2 uploaded while v1 is extracting (v1 `superseded` with no values, v2 extracted with no previous links); (E) delete mid-extraction (404, and the next upload still extracts); (F) a sweep that every document is `extracted` with the expected value count and no field twice. Each check prints PASS or FAIL. Checks that depend on a break (for example "was extracting before the restart") fail if the break didn't happen, so nothing passes by accident.
+Both need bash (Git Bash on Windows), `curl`, `node`, `docker compose` and the worker on the fake extractor (they fail fast otherwise). Each prints PASS/FAIL per check, exits non-zero on any failure and restores the worker to `.env` settings on exit. A check whose break didn't land (e.g. the document was already extracted) fails, so nothing passes by accident.
 
-Last run on 2026-11-28 against the compose images (fake extractor, 15 s delay): all 10 checks passed, `ALL CHECKS PASSED`.
+### Critical scenarios
 
-The script needs bash (Git Bash on Windows), `curl`, `node` and `docker compose`, and the worker running with the fake extractor (it fails fast otherwise). It checks: the three seeded documents extract; a worker restart mid-extraction; a double upload (200, same id, one row); `FLUSHALL` plus restart of worker and api; `SIGKILL` of the worker (lease recovery); no duplicate values per version. When it ends (pass or fail) it restores the worker to your normal settings (`env -u EXTRACTOR -u FAKE_EXTRACTOR_DELAY_MS docker compose up -d worker`, i.e. from `.env` and compose defaults); a failure of that step does not change the exit code.
+Last run 2026-11-28: unit 210/210, integration 154/154 (db 85, api 49, worker 20), `verify-phase1.sh` 9/9, `chaos.sh` 10/10. Each scenario below is covered by those tests and scripts; the list after the table says what they leave out.
+
+| Scenario                    | Expected behavior                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Worker crash mid-extraction | Lease (30 s) expires, reconciler re-enqueues, a new run finishes; the dead run can't write; 3 interruptions → `failed`         |
+| Redis `FLUSHALL`            | Postgres is the truth; reconciler (≤ 10 s) re-enqueues and extraction completes                                                |
+| Duplicate upload            | 200, same id, one version, no second enqueue                                                                                   |
+| Duplicate extraction job    | One run claims, the other is `skipped`; a stale run can't write                                                                |
+| LLM failure and retry       | 429/503/timeout: one retry, then fallback model, then `failed`; `POST /retry` re-runs only missing chunks; no automatic re-run |
+| v2 while v1 is extracting   | v2 current; v1 `superseded` with no values; v2 has no previous links                                                           |
+| Changed evidence            | `pending`, linked to the previous value, review not carried                                                                    |
+| Unchanged evidence          | `carried_over`, including corrections and v1 → v2 → v3 chains                                                                  |
+| Missing fields              | `value = null` with a gap reason, also for conflicting or hallucinated values                                                  |
+| Delete mid-extraction       | 204, then 404; the run stops, writes nothing and frees its slot                                                                |
+
+Not covered:
+
+- **Worker crash mid-extraction:** the 3-attempt cap is tested in the DB code only, not by real repeated crashes.
+- **Redis FLUSHALL:** the wipe itself is E2E only.
+- **Duplicate extraction job:** two direct calls, not two real BullMQ deliveries.
+- **LLM failure and retry:** no live Gemini outage tested.
+- **Missing fields:** how the UI shows a gap (there are no UI tests).
 
 ### Live extraction check
 
-Run with Gemini (free tier) on 2026-11-27: the three fixtures were uploaded as new documents and extracted by `gemini-3.6-flash` (no fallback needed, one attempt each, 33 to 42 s per document). Result: **16 of 16 fields correct**, including the expected gap.
+Gemini free tier, `gemini-3.6-flash`, the three fixtures uploaded fresh; one attempt each, no fallback. **16/16 correct on 2026-11-27 and again on 2026-11-28.**
 
-| Fixture       | Time   | Values                                                                                                                                                                                                                  |
-| ------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invoice       | 35.7 s | `invoice_number` INV-2025-0847, `issue_date` 2025-09-14, `due_date` 2025-10-14, `vendor_name` MERIDIAN OFFICE SUPPLIES LLC, `total_amount` $5,230.29                                                                    |
-| lease         | 42.3 s | `tenant_name` Dana Okafor, `monthly_rent` $2,350.00, `security_deposit` $3,525.00, `lease_start` March 1, 2025, `term_months` 24                                                                                        |
-| market report | 32.9 s | `report_quarter` Q3 2025, `market_area` Eastport-Harborview Submarket, `vacancy_rate` 4.2%, `average_rent_1br` $1,985, `year_over_year_rent_growth` 3.8%, `median_household_income` **gap** ("not stated in this part") |
+| Fixture       | Time (11-27 / 11-28) | Values                                                                                                                                                                                                                                  |
+| ------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invoice       | 36 s / 35 s          | `invoice_number` INV-2025-0847, `issue_date` 2025-09-14, `due_date` 2025-10-14, `vendor_name` MERIDIAN OFFICE SUPPLIES LLC, `total_amount` $5,230.29                                                                                    |
+| lease         | 42 s / 37 s          | `tenant_name` Dana Okafor, `monthly_rent` $2,350.00, `security_deposit` $3,525.00, `lease_start` March 1, 2025, `term_months` 24                                                                                                        |
+| market report | 33 s / 120 s         | `report_quarter` Q3 2025, `market_area` Eastport-Harborview Submarket, `vacancy_rate` 4.2%, `average_rent_1br` $1,985, `year_over_year_rent_growth` 3.8%, `median_household_income` **gap** (not in the report; the model didn't guess) |
 
-`median_household_income` is a real gap: the report does not contain it, and the model returned no value instead of guessing.
-
-History: an earlier run (before the numeric fix) was 15/16. The lease `term_months` came back as "twenty-four (24)" and failed the strict check. Since `e5dd89f` (prompt v2 and one-distinct-number rule, see [0007](docs/decisions/0007-numeric-values.md)) `term_months` is `24` and the run is 16/16. If every Gemini model is busy (429/503/timeouts) the versions go `failed` with a clear error and `POST /documents/:id/retry` re-runs only the missing chunks; no retry loop is built in beyond one retry per model.
+An earlier run was 15/16 (`term_months` came back as "twenty-four (24)"), fixed in `e5dd89f` ([0007](docs/decisions/0007-numeric-values.md)). If every model is busy, the version goes `failed` and `POST /documents/:id/retry` re-runs only the missing chunks.
 
 ## Schema
 
 Full model in `packages/db/prisma/schema.prisma`. Key columns only below; lease, token and timestamp columns are left out.
 
-```mermaid
-erDiagram
-    documents ||--o{ document_versions : "has versions"
-    documents |o--o| document_versions : "current_version_id"
-    document_versions ||--o{ extraction_runs : "attempts"
-    document_versions ||--o{ version_chunks : "chunk plan"
-    document_versions ||--o{ chunk_results : "LLM answers"
-    document_versions ||--o{ extracted_values : "one per field"
-    extracted_values ||--o{ reviews : "append-only history"
-    extracted_values |o--o{ extracted_values : "previous_value_id"
-    reviews |o--o{ extracted_values : "carried_review_id"
+![Schema ER diagram](docs/schema-er.png)
 
-    documents {
-        uuid id PK
-        document_type type
-        text title
-        uuid current_version_id FK, UK "nullable"
-    }
-    document_versions {
-        uuid id PK
-        uuid document_id FK "unique with version_no"
-        int version_no
-        text file_key "sha256.pdf"
-        text sha256
-        version_status status
-        text parsed_text "never rewritten"
-        uuid active_run_id "lease owner"
-        timestamptz lease_expires_at
-    }
-    extraction_runs {
-        uuid id PK
-        uuid version_id FK
-        run_status status
-        text model
-        text error
-    }
-    version_chunks {
-        uuid version_id PK, FK
-        int chunk_index PK
-        int start
-        int end
-        int tokens
-    }
-    chunk_results {
-        uuid version_id PK, FK
-        int chunk_index PK
-        text prompt_version PK
-        uuid run_id
-        jsonb raw_response
-        jsonb candidates
-    }
-    extracted_values {
-        uuid id PK
-        uuid version_id FK "unique with field"
-        text field
-        text value "null means gap"
-        text evidence
-        text gap_reason "CHECK value_xor_gap"
-        uuid previous_value_id FK
-        uuid carried_review_id FK
-    }
-    reviews {
-        uuid id PK
-        uuid value_id FK
-        review_action action "approve or correct"
-        text corrected_value "required when action is correct"
-        text note
-        timestamptz created_at
-    }
-```
+Diagram source: [`docs/schema-er.mmd`](docs/schema-er.mmd) (Mermaid). The PNG is rendered from it with Mermaid 11, because GitHub fails to render this diagram inline ("Unable to render rich display").
 
 - `documents` → has many `document_versions`. Each version stores its file key, sha256, **parsed text** (never rewritten), page offsets, status, and the lease fields the worker uses to claim it.
 - `extraction_runs`: one per attempt (`running | succeeded | failed | abandoned`).
