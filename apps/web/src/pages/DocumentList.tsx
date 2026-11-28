@@ -1,8 +1,20 @@
-import { Alert, Anchor, Button, Card, Group, Loader, Stack, Table, Text } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Button,
+  Card,
+  Group,
+  Loader,
+  Stack,
+  Table,
+  Text,
+  VisuallyHidden,
+} from '@mantine/core';
 import type { DocumentListItemDto } from '@lomi/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { apiGet } from '../api';
+import { DeleteDocumentButton } from '../components/DeleteDocumentButton';
 import { DocumentTypePill } from '../components/DocumentTypePill';
 import { ReviewStatusPill } from '../components/ReviewStatusPill';
 import { StatCard, StatIcons } from '../components/StatCard';
@@ -91,6 +103,10 @@ export function DocumentList() {
                 <Table.Th>Version</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th>Review</Table.Th>
+                {/* Actions column: visually hidden label, the black bar stays unbroken. */}
+                <Table.Th w={56}>
+                  <VisuallyHidden>Actions</VisuallyHidden>
+                </Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -109,6 +125,15 @@ export function DocumentList() {
                     <ReviewStatusPill status={d.status} progress={d.progress} />
                   </Table.Td>
                   <Table.Td>{progressLabel(d.progress)}</Table.Td>
+                  <Table.Td>
+                    {/* versionNo on a list row is the current version. */}
+                    <DeleteDocumentButton
+                      variant="icon"
+                      documentId={d.id}
+                      title={d.title}
+                      currentVersionNo={d.versionNo}
+                    />
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>

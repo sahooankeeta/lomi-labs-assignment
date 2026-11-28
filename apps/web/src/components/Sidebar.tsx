@@ -60,7 +60,7 @@ function UploadForm() {
           onChange={(e) => setTitle(e.currentTarget.value)}
         />
         <PdfDrop label="PDF" file={file} onChange={setFile} />
-        <Button type="submit" fullWidth loading={upload.isPending} disabled={!type || !file}>
+        <Button className="upload-btn" type="submit" fullWidth loading={upload.isPending} disabled={!type || !file}>
           Upload
         </Button>
         {errMessage && (
@@ -97,7 +97,7 @@ function ApiHealth() {
 
 /**
  * Fixed left sidebar on every page: the upload form on top, API health at the bottom. Styled
- * by layout.css (peach card, fixed on wide screens, a plain block above the content below 1000px).
+ * by layout.css (ink card, fixed on wide screens, a plain block above the content below 1000px).
  */
 export function Sidebar() {
   return (

@@ -34,8 +34,6 @@ export const palette = {
   sage: '#9DC07A',
   /** Failure pill: a pastel red, still under ink text. */
   rose: '#F2B4AA',
-  /** Sidebar card: soft peach, unused by any status or type colour. Ink on it is 12.7:1 (>= 4.5:1). */
-  peach: '#F3CDB0',
 } as const;
 
 /**
@@ -111,7 +109,7 @@ export const theme = createTheme({
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {},
   light: {
-    '--sidebar-bg': palette.peach,
+    '--sidebar-bg': palette.ink,
     '--mantine-color-body': palette.cream,
     '--mantine-color-text': palette.ink,
     '--mantine-color-dimmed': palette.muted,

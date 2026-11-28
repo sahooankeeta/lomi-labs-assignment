@@ -37,6 +37,7 @@ export function PdfDrop({ label, file, onChange, disabled }: Props) {
           onChange(null);
           setRejected(dropRejectionMessage(rejections.flatMap((r) => r.errors.map((e) => e.code))));
         }}
+        className="pdf-drop"
         p="sm"
         mih={56}
         style={{ display: 'flex', alignItems: 'center' }}

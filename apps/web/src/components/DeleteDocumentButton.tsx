@@ -1,8 +1,8 @@
-import { Alert, Button, Group, Loader, Modal, Stack, Text } from '@mantine/core';
+import { ActionIcon, Alert, Button, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import type { VersionSummaryDto } from '@lomi/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { ApiRequestError, apiDelete, apiGet } from '../api';
 import { deleteSummary } from '../lib/versions';
 import { StatusPill } from './StatusPill';
@@ -11,17 +11,51 @@ interface Props {
   documentId: string;
   title: string;
   currentVersionNo: number;
+  /**
+   * How the modal is opened: `'button'` (default) is the pill "Delete" button used on the detail
+   * page; `'icon'` is a compact trash icon for table rows. The modal and mutation are shared.
+   */
+  variant?: 'button' | 'icon';
+}
+
+/** Inline trash icon (no icon dependency); decorative, the button carries the aria-label. */
+function TrashIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
 }
 
 /**
  * "Delete" button plus its confirmation modal. The modal lists every version that will go
  * (shared `['versions', id]` cache with VersionBar). Deletion is whole-document on purpose:
- * earlier versions must stay queryable, so there is no per-version delete.
+ * earlier versions must stay queryable, so there is no per-version delete. After a delete the
+ * user lands on the list (see `leave`).
  */
-export function DeleteDocumentButton({ documentId, title, currentVersionNo }: Props) {
+export function DeleteDocumentButton({
+  documentId,
+  title,
+  currentVersionNo,
+  variant = 'button',
+}: Props) {
   const [opened, setOpened] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   const versions = useQuery({
     queryKey: ['versions', documentId],
@@ -35,7 +69,8 @@ export function DeleteDocumentButton({ documentId, title, currentVersionNo }: Pr
     queryClient.removeQueries({ queryKey: ['document', documentId] });
     queryClient.removeQueries({ queryKey: ['versions', documentId] });
     void queryClient.invalidateQueries({ queryKey: ['documents'] });
-    void navigate('/');
+    // Already on the list (deleted from a row): stay put, and do not push a duplicate entry.
+    if (pathname !== '/') void navigate('/');
   };
 
   const remove = useMutation({
@@ -58,10 +93,26 @@ export function DeleteDocumentButton({ documentId, title, currentVersionNo }: Pr
 
   return (
     <>
-      {/* A pastel-red pill with dark red text: stands apart from the black primary pills. */}
-      <Button color="red" variant="light" c="red.9" size="sm" onClick={open}>
-        Delete
-      </Button>
+      {variant === 'icon' ? (
+        // stopPropagation: a row (or its link) must never react to this click.
+        <ActionIcon
+          color="red"
+          variant="subtle"
+          c="red.9"
+          aria-label={`Delete ${title}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            open();
+          }}
+        >
+          <TrashIcon />
+        </ActionIcon>
+      ) : (
+        // A pastel-red pill with dark red text: stands apart from the black primary pills.
+        <Button color="red" variant="light" c="red.9" size="sm" onClick={open}>
+          Delete
+        </Button>
+      )}
       <Modal opened={opened} onClose={() => setOpened(false)} title={`Delete "${title}"?`}>
         <Stack>
           <Text>{summary.heading}</Text>

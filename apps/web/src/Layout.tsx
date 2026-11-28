@@ -5,7 +5,7 @@ import { palette } from './theme';
 import './layout.css';
 
 /**
- * App chrome: a fixed peach sidebar (upload form, API health) on every page, and one large
+ * App chrome: a fixed black (ink) sidebar (upload form, API health) on every page, and one large
  * rounded panel holding the routed page, offset to the right of the sidebar.
  */
 export function Layout() {
