@@ -283,3 +283,66 @@ describe('POST /documents/:id/retry', () => {
     expect(enqueue).toHaveBeenCalledWith(doc.currentVersionId, 0);
   });
 });
+
+describe('DELETE /documents/:id', () => {
+  it('deletes an uploaded document: 204, then GET 404, gone from GET /documents', async () => {
+    const app = makeApp();
+    const { id } = (await upload(app)).json();
+    enqueue.mockClear();
+
+    const res = await app.inject({ method: 'DELETE', url: `/documents/${id}` });
+    expect(res.statusCode).toBe(204);
+    expect(res.body).toBe('');
+    expect((await app.inject({ method: 'GET', url: `/documents/${id}` })).statusCode).toBe(404);
+    const list = (await app.inject({ method: 'GET', url: '/documents' })).json();
+    expect(list.map((d: { id: string }) => d.id)).not.toContain(id);
+  });
+
+  it('removes the PDF when no other document uses it', async () => {
+    const app = makeApp();
+    const { id } = (await upload(app)).json();
+    const version = await db.documentVersion.findFirstOrThrow({ where: { documentId: id } });
+    await files.read(version.fileKey);
+
+    await app.inject({ method: 'DELETE', url: `/documents/${id}` });
+    await expect(files.read(version.fileKey)).rejects.toThrow();
+  });
+
+  it('keeps a PDF another document still uses', async () => {
+    const app = makeApp();
+    const invoice = (await upload(app, { type: 'invoice' })).json();
+    await upload(app, { type: 'lease' });
+    const version = await db.documentVersion.findFirstOrThrow({
+      where: { documentId: invoice.id },
+    });
+
+    const res = await app.inject({ method: 'DELETE', url: `/documents/${invoice.id}` });
+    expect(res.statusCode).toBe(204);
+    await expect(files.read(version.fileKey)).resolves.toBeDefined();
+  });
+
+  it('answers 404 for an unknown id and on a second delete; 400 for a malformed id', async () => {
+    const app = makeApp();
+    const unknown = await app.inject({ method: 'DELETE', url: `/documents/${UNKNOWN_ID}` });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json().error).toBe('not_found');
+
+    const { id } = (await upload(app)).json();
+    expect((await app.inject({ method: 'DELETE', url: `/documents/${id}` })).statusCode).toBe(204);
+    const again = await app.inject({ method: 'DELETE', url: `/documents/${id}` });
+    expect(again.statusCode).toBe(404);
+    expect(again.json().error).toBe('not_found');
+
+    const bad = await app.inject({ method: 'DELETE', url: '/documents/nope' });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error).toBe('bad_request');
+  });
+
+  it('never enqueues', async () => {
+    const app = makeApp();
+    const { id } = (await upload(app)).json();
+    enqueue.mockClear();
+    await app.inject({ method: 'DELETE', url: `/documents/${id}` });
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+});
