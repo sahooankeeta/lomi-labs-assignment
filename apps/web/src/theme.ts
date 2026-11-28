@@ -24,8 +24,14 @@ export const palette = {
   surface: '#ECE7DE',
   /** Hairline borders on the cream/surface tones. */
   line: '#DDD5C7',
-  /** Near-black for text, the table header and primary buttons. */
+  /** Near-black for text (and text only: dark backgrounds use `charcoal`). */
   ink: '#111111',
+  /**
+   * Warm charcoal for every dark background: the sidebar, the table header bar, primary pill
+   * buttons and active tabs. Softer than `ink` against the cream page (the owner found pure
+   * black too harsh); cream text on it is 12.5:1.
+   */
+  charcoal: '#2E2B27',
   /** Muted text on cream and pastels (still ≥ 4.5:1 on all of them). */
   muted: '#55514A',
   blush: '#F4B8D8',
@@ -59,8 +65,8 @@ export const typeColors = {
   market_report: { bg: '#E0D8F4', fg: '#3E2A75' },
 } as const;
 
-// Index 6 is what `filled` buttons use, so it is the ink itself: Mantine's primary
-// button becomes the reference's black pill without overriding every Button.
+// Index 6 is what `filled` buttons (and active pill tabs) use, so it is the charcoal: Mantine's
+// primary button becomes the dark pill without overriding every Button. 7+ are the hover shades.
 const ink: MantineColorsTuple = [
   '#F4F2EE',
   '#E6E2DA',
@@ -68,10 +74,10 @@ const ink: MantineColorsTuple = [
   '#A8A196',
   '#7A746A',
   '#4A4640',
-  '#111111',
-  '#000000',
-  '#000000',
-  '#000000',
+  '#2E2B27',
+  '#24211E',
+  '#1C1A17',
+  '#141210',
 ];
 
 /** Mantine theme for the review UI: ink primary colour, pill buttons, soft rounded cards. */
@@ -109,7 +115,7 @@ export const theme = createTheme({
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {},
   light: {
-    '--sidebar-bg': palette.ink,
+    '--sidebar-bg': palette.charcoal,
     '--mantine-color-body': palette.cream,
     '--mantine-color-text': palette.ink,
     '--mantine-color-dimmed': palette.muted,

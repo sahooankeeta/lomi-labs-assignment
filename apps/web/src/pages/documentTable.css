@@ -1,6 +1,6 @@
 /*
  * Documents table. Mantine's Table collapses borders, which cannot round a row, so this one
- * uses separate borders with a small vertical gap; the hover highlight and the ink header bar
+ * uses separate borders with a small vertical gap; the hover highlight and the charcoal header bar
  * are painted on the cells, with the outer cells of each row carrying the rounded corners.
  */
 .doc-table {
@@ -8,9 +8,9 @@
   border-spacing: 0 4px;
 }
 
-/* Header: one ink bar, fully rounded at both ends like the pill buttons. */
+/* Header: one charcoal bar, fully rounded at both ends like the pill buttons. */
 .doc-table thead th {
-  background: #111111;
+  background: #2e2b27; /* palette.charcoal */
   color: #f6f1e7;
   font-size: 12px;
   font-weight: 500;
@@ -44,7 +44,7 @@
 /* Fractional column widths leave hairline seams between painted cells; a 1px same-colour
    shadow toward the next cell covers them (not on the last cell, which has the round end). */
 .doc-table thead th:not(:last-child) {
-  box-shadow: 1px 0 0 #111111;
+  box-shadow: 1px 0 0 #2e2b27;
 }
 .doc-table tbody tr:hover td:not(:last-child) {
   box-shadow: 1px 0 0 #fbf8f2;

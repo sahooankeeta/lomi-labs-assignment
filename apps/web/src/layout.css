@@ -1,12 +1,12 @@
 /*
  * Sidebar contrast pairs (WCAG, computed; all >= 4.5:1):
- *   cream #F6F1E7 text/labels on ink #111111 ........ 16.77
+ *   cream #F6F1E7 text/labels on charcoal #2E2B27 ... 12.51
  *   white input value text ink #111111 on #FFFFFF ... 18.88
- *   required asterisk rose #F2B4AA on ink ........... 10.69
+ *   required asterisk rose #F2B4AA on charcoal ...... 7.97
  *   Upload enabled: ink on cream #F6F1E7 ............ 16.77
- *   Upload disabled: #B9B2A6 on #34312C .............. 6.16 (muted, but still legible)
+ *   Upload disabled: #BDB5A8 on #46423C .............. 4.91 (muted, but still legible)
  *   dropzone: ink on cream #F6F1E7 ................... 16.77; muted #55514A on cream 7.4
- *   API status label: cream on ink ................... 16.77
+ *   API status label: cream on charcoal .............. 12.51
  *
  * Sidebar: fixed, full height, 300px wide with a 12px inset so it reads as a rounded card; it
  * scrolls internally. The panel is offset to match. Below 1000px it is an ordinary block.
@@ -28,11 +28,11 @@
   /* Mantine reads text colours from this variable, so overriding it here turns every label,
      heading and status text cream without touching each component. */
   --mantine-color-text: #f6f1e7;
-  --mantine-color-dimmed: #b9b2a6;
+  --mantine-color-dimmed: #bdb5a8;
   color: #f6f1e7;
 }
 /* Inputs stay white with ink text, and the required asterisk gets a light red that is
-   readable on black (Mantine's default red is dim there). */
+   readable on charcoal (Mantine's default red is dim there). */
 .app-sidebar .mantine-Input-input {
   --input-color: #111111;
   --input-bg: #ffffff;
@@ -48,7 +48,7 @@
   background: #f6f1e7;
   color: #111111;
 }
-/* Upload: cream pill with ink text on black; muted (not invisible) when disabled. */
+/* Upload: cream pill with ink text on charcoal; muted (not invisible) when disabled. */
 .app-sidebar .upload-btn {
   --button-bg: #f6f1e7;
   --button-hover: #ffffff;
@@ -56,8 +56,8 @@
 }
 .app-sidebar .upload-btn:disabled,
 .app-sidebar .upload-btn[data-disabled] {
-  background: #34312c;
-  color: #b9b2a6;
+  background: #46423c;
+  color: #bdb5a8;
 }
 /* Pushes API health to the bottom when the form is short. */
 .app-sidebar-foot {
