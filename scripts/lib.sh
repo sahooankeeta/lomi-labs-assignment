@@ -81,13 +81,14 @@ fresh_pdf() {
   printf '\n%%verify-%s-%s\n' "$RANDOM$RANDOM" "$1" >>"$TMP/$1.pdf"
 }
 
-# require_fake_worker: exit 1 unless the worker runs the fake extractor slowly enough (>= 5 s) to
-# leave a window for breaking things mid-extraction.
+# require_fake_worker [min_ms]: exit 1 unless the worker runs the fake extractor slowly enough
+# (default >= 5000 ms) to leave a window for breaking things mid-extraction. A non-numeric delay
+# fails too (the pre-lib.sh version let one through).
 require_fake_worker() {
-  local ext delay
+  local ext delay min="${1:-5000}"
   ext=$(docker compose exec -T worker printenv EXTRACTOR 2>/dev/null | tr -d '\r')
   delay=$(docker compose exec -T worker printenv FAKE_EXTRACTOR_DELAY_MS 2>/dev/null | tr -d '\r')
-  if [ "$ext" != "fake" ] || ! [ "${delay:-0}" -ge 5000 ] 2>/dev/null; then
+  if [ "$ext" != "fake" ] || ! [ "${delay:-0}" -ge "$min" ] 2>/dev/null; then
     echo "FAIL  worker must run with EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 (got EXTRACTOR='$ext' delay='$delay')."
     echo "      Start it with: EXTRACTOR=fake FAKE_EXTRACTOR_DELAY_MS=15000 docker compose up -d worker"
     exit 1
@@ -120,4 +121,21 @@ summary() {
   fi
   echo "$FAILS CHECK(S) FAILED"
   exit 1
+}
+
+# supersede_problems <current doc JSON> <versions JSON> <v1 doc JSON>: the end state after a v2
+# upload landed while v1 was extracting. Prints OK and returns 0 only if v2 is current and
+# extracted, v1 is superseded with no values, and no v2 value links back to v1. Any missing field
+# or unparseable body is a problem, never a pass: the caller requires both the exit status and OK.
+supersede_problems() {
+  node -e '
+    const [cur,vs,v1]=process.argv.slice(1).map(s=>{try{return JSON.parse(s)}catch{return null}});
+    const bad=[];
+    if(cur?.version?.versionNo!==2||cur?.currentVersionNo!==2)bad.push("current is not v2");
+    const st=Array.isArray(vs)?vs.map(v=>v?.versionNo+":"+v?.status).join(","):"not a list";
+    if(st!=="2:extracted,1:superseded")bad.push("versions="+st);
+    if(!Array.isArray(v1?.values)||v1.values.length!==0)bad.push("v1 values="+(Array.isArray(v1?.values)?v1.values.length:"missing"));
+    if(!Array.isArray(cur?.values)||cur.values.length===0||cur.values.some(v=>v?.previous!==null))bad.push("v2 values missing or linked to v1");
+    if(bad.length){console.log(bad.join("; "));process.exit(1)}
+    console.log("OK");' "$1" "$2" "$3"
 }
