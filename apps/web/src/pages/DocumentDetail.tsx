@@ -18,6 +18,8 @@ import { apiGet, apiPost } from '../api';
 import { DeleteDocumentButton } from '../components/DeleteDocumentButton';
 import { EvidencePanel } from '../components/EvidencePanel';
 import { ReviewRing } from '../components/ReviewRing';
+import { DocumentTypePill } from '../components/DocumentTypePill';
+import { ReviewStatusPill } from '../components/ReviewStatusPill';
 import { StatusPill } from '../components/StatusPill';
 import { ValueCard } from '../components/ValueCard';
 import { VersionBar } from '../components/VersionBar';
@@ -122,10 +124,14 @@ export function DocumentDetail() {
         <Stack gap={6}>
           <Title order={1}>{d.title}</Title>
           <Group gap="sm">
-            <Text c="dimmed">
-              {d.type} · v{d.version.versionNo}
-            </Text>
-            <StatusPill status={d.status} />
+            <DocumentTypePill type={d.type} />
+            <Text c="dimmed">v{d.version.versionNo}</Text>
+            {/* Review status only for the current version; older ones show the raw status. */}
+            {isCurrent ? (
+              <ReviewStatusPill status={d.status} progress={d.progress} />
+            ) : (
+              <StatusPill status={d.status} />
+            )}
             <Text size="sm">{progressLabel(d.progress)}</Text>
           </Group>
         </Stack>

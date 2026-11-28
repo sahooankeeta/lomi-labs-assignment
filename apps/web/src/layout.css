@@ -1,0 +1,38 @@
+/*
+ * Sidebar: fixed, full height, 300px wide with a 12px inset so it reads as a rounded card; it
+ * scrolls internally. The panel is offset to match. Below 1000px it is an ordinary block.
+ */
+.app-sidebar {
+  position: fixed;
+  top: 12px;
+  bottom: 12px;
+  left: 12px;
+  width: 300px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px 20px;
+  overflow-y: auto;
+  border-radius: 20px;
+  background: var(--sidebar-bg);
+  color: var(--mantine-color-text);
+}
+/* Pushes API health to the bottom when the form is short. */
+.app-sidebar-foot {
+  margin-top: auto;
+}
+.app-panel {
+  margin-left: 312px;
+}
+@media (max-width: 1000px) {
+  .app-sidebar {
+    position: static;
+    width: auto;
+    margin-bottom: 12px;
+    overflow: visible;
+  }
+  .app-panel {
+    margin-left: 0;
+  }
+}

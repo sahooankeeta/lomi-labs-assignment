@@ -34,6 +34,31 @@ export const palette = {
   sage: '#9DC07A',
   /** Failure pill: a pastel red, still under ink text. */
   rose: '#F2B4AA',
+  /** Sidebar card: soft peach, unused by any status or type colour. Ink on it is 12.7:1 (>= 4.5:1). */
+  peach: '#F3CDB0',
+} as const;
+
+/**
+ * Review-status pill colours (see `components/ReviewStatusPill.tsx`). Text/background contrast
+ * (WCAG, computed): queued 13.03, extracting 13.88 (butter), failed 7.39 (dark red text),
+ * in review 11.41 (blush), approved 9.22 (sage); all well above the 4.5:1 minimum.
+ */
+export const reviewColors = {
+  queued: { bg: '#DAD6CE', fg: palette.ink },
+  extracting: { bg: palette.butter, fg: palette.ink },
+  failed: { bg: '#F7C9C4', fg: '#7A1010' },
+  in_review: { bg: palette.blush, fg: palette.ink },
+  approved: { bg: palette.sage, fg: palette.ink },
+} as const;
+
+/**
+ * Document-type pill colours: cooler, lighter tints than the status pastels, with dark text in
+ * the same hue. Contrast: invoice 9.23, lease 8.09, market report 8.53 (all >= 4.5:1).
+ */
+export const typeColors = {
+  invoice: { bg: '#D3E6F7', fg: '#0F3A5C' },
+  lease: { bg: '#CFECE7', fg: '#0B4A44' },
+  market_report: { bg: '#E0D8F4', fg: '#3E2A75' },
 } as const;
 
 // Index 6 is what `filled` buttons use, so it is the ink itself: Mantine's primary
@@ -86,6 +111,7 @@ export const theme = createTheme({
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {},
   light: {
+    '--sidebar-bg': palette.peach,
     '--mantine-color-body': palette.cream,
     '--mantine-color-text': palette.ink,
     '--mantine-color-dimmed': palette.muted,

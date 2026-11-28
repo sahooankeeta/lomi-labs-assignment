@@ -106,6 +106,8 @@ Run `pnpm --filter @lomi/api dev` and `pnpm --filter @lomi/web dev`, then open h
 
 For the compose stack (http://localhost:8080), rebuild the images one service at a time first, so the new UI is served: `docker compose build api`, then `worker`, `web`, `migrate`, then `docker compose up -d`. On :8080, the pdf.js worker (`assets/pdf.worker.*.mjs`) is checked to come back as `application/javascript` and `/api/documents` to return JSON; the full flow has not been clicked through there in a browser.
 
+The status pill is a UI-only review status derived on the client (the API's version statuses are fixed by the brief): Queued (grey), Extracting (yellow), Failed (red tint), In review (pink, extracted with values pending), Approved (green, nothing pending); older versions keep the raw status. Document types are colour-coded: invoice blue, lease teal, market report violet.
+
 1. **List.** Every document with its status and review progress. Upload a PDF with the type picker; the list polls while anything is queued or processing and stops once all are extracted. A non-PDF shows `file is not a PDF`.
 2. **Detail.** Click a document. Values are grouped into cards (Needs review, Carried over, Done), with the evidence quote and "page N". The header shows progress.
 3. **Approve or correct.** Approve moves a card to Done. Correct opens an inline field; a value that does not fit the field type (`abc` for a money field) shows `"abc" is not a valid money`. A corrected card shows the new value with the original struck through. A gap offers "Confirm absent".

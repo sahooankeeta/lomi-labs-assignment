@@ -41,37 +41,6 @@
   border-radius: 0 12px 12px 0;
 }
 
-/*
- * List page layout: a sticky 320px upload column on the left, the stats and table to its
- * right. Below 1100px the column stacks above the main content and stops being sticky.
- */
-.list-layout {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-}
-.list-side {
-  flex: 0 0 320px;
-  width: 320px;
-  position: sticky;
-  top: 12px;
-}
-.list-main {
-  flex: 1;
-  min-width: 0;
-}
-@media (max-width: 1100px) {
-  .list-layout {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .list-side {
-    position: static;
-    flex: none;
-    width: 100%;
-  }
-}
-
 /* Fractional column widths leave hairline seams between painted cells; a 1px same-colour
    shadow toward the next cell covers them (not on the last cell, which has the round end). */
 .doc-table thead th:not(:last-child) {
