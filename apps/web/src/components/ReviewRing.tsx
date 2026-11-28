@@ -5,7 +5,7 @@ import { palette } from '../theme';
 /**
  * Review progress as a donut: approved / corrected / carried over / pending segments, with the
  * share reviewed in the middle and a legend that spells out every count, so the ring is never
- * the only carrier of the numbers. Sized for the sidebar (88px ring, small legend). Built only from the detail response's `progress`.
+ * the only carrier of the numbers. Sized for the sidebar (100px ring beside a one-line-per-row legend). Built only from the detail response's `progress`.
  */
 export function ReviewRing({ progress }: { progress: ProgressDto }) {
   const { approved, corrected, carried_over: carried, pending, gaps, total } = progress;
@@ -31,33 +31,33 @@ export function ReviewRing({ progress }: { progress: ProgressDto }) {
   return (
     <Group gap="sm" wrap="nowrap" align="center">
       <RingProgress
-        size={92}
-        thickness={11}
+        size={100}
+        thickness={12}
         roundCaps
         sectionGap={sections.length > 1 ? 3 : 0}
         rootColor="#4a463f"
         sections={sections}
         label={
           <Stack gap={0} align="center">
-            <Text fz={15} fw={600} lh={1}>
+            <Text fz={19} fw={600} lh={1}>
               {reviewed === null ? '—' : `${reviewed}%`}
             </Text>
-            <Text fz={10} lh={1.2}>
+            <Text fz={11} lh={1.3}>
               reviewed
             </Text>
           </Stack>
         }
       />
-      <Stack gap={3}>
+      <Stack gap={6}>
         {rows.map((r) => (
           <Group key={r.label} gap={6} wrap="nowrap">
-            <Box w={9} h={9} style={{ borderRadius: 999, background: r.color, flexShrink: 0 }} />
-            <Text fz={12} lh={1.3}>
+            <Box w={10} h={10} style={{ borderRadius: 999, background: r.color, flexShrink: 0 }} />
+            <Text fz={13} lh={1.3} style={{ whiteSpace: 'nowrap' }}>
               {r.label}: <b>{r.count}</b>
             </Text>
           </Group>
         ))}
-        <Text fz={11} c="dimmed">
+        <Text fz={12} c="dimmed">
           {total} fields{gaps > 0 ? ` · ${gaps} gaps` : ''}
         </Text>
       </Stack>

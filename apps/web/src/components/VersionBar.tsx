@@ -58,18 +58,18 @@ export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
   };
 
   return (
-    <Stack gap="sm">
+    <Stack gap="md">
       <Stack gap={6}>
-        <Text fw={600} fz="sm" id="version-pills">
+        <Text fw={600} fz="md" id="version-pills">
           Versions
         </Text>
-        <Group gap={6} role="group" aria-labelledby="version-pills">
+        <Group gap={8} role="group" aria-labelledby="version-pills">
           {versionOptionsOrFallback(versions.data, versionNo, currentVersionNo).map((o) => {
             const active = o.value === String(versionNo);
             return (
               <Button
                 key={o.value}
-                size="compact-xs"
+                size="xs"
                 // Cream (active) vs raised charcoal (others) so both read on the sidebar.
                 className={active ? 'version-pill version-pill-active' : 'version-pill'}
                 aria-pressed={active}
@@ -82,11 +82,11 @@ export function VersionBar({ documentId, versionNo, currentVersionNo }: Props) {
         </Group>
       </Stack>
       {versionNo === currentVersionNo && (
-        <Stack gap={8}>
-          <PdfDrop compact label="New version" file={file} onChange={setFile} />
+        <Stack gap={10}>
+          <PdfDrop label="New version" file={file} onChange={setFile} />
           <Button
             className="upload-btn"
-            size="xs"
+            size="sm"
             fullWidth
             loading={upload.isPending}
             disabled={!file}

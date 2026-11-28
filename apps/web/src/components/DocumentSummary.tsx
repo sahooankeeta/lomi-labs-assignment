@@ -45,7 +45,7 @@ interface Props {
  */
 export function DocumentSummary({ d, id, isCurrent }: Props) {
   return (
-    <Stack gap="sm">
+    <Stack gap="lg">
       <Group justify="space-between" wrap="nowrap">
         <BackToList />
         <DeleteDocumentButton
@@ -54,24 +54,24 @@ export function DocumentSummary({ d, id, isCurrent }: Props) {
           currentVersionNo={d.currentVersionNo}
         />
       </Group>
-      <Stack gap={8}>
-        <Title order={1} fz={22} lh={1.2} className="summary-title" title={d.title}>
+      <Stack gap={10}>
+        <Title order={1} fz={27} lh={1.2} className="summary-title" title={d.title}>
           {d.title}
         </Title>
-        <Group gap={6}>
+        <Group gap={8}>
           <DocumentTypePill type={d.type} />
-          <Text fz="xs">v{d.version.versionNo}</Text>
+          <Text fz="sm">v{d.version.versionNo}</Text>
           {/* Review status only for the current version; older ones show the raw status. */}
           {isCurrent ? (
             <ReviewStatusPill status={d.status} progress={d.progress} />
           ) : (
             <StatusPill status={d.status} />
           )}
-          <Text fz="xs">{progressLabel(d.progress)}</Text>
+          <Text fz="sm">{progressLabel(d.progress)}</Text>
         </Group>
       </Stack>
       <div className="summary-panel">
-        <Text fw={600} fz="sm" mb={8}>
+        <Text fw={600} fz="md" mb={12}>
           Review progress
         </Text>
         <ReviewRing progress={d.progress} />

@@ -112,7 +112,7 @@ export function DeleteDocumentButton({
         // A solid pastel-red pill with dark red text (same pair as the failed status pill, 7.4:1):
         // stands apart from the primary pills and reads on cream and on the charcoal sidebar.
         <Button
-          size="compact-sm"
+          size="sm"
           bg={reviewColors.failed.bg}
           c={reviewColors.failed.fg}
           onClick={open}
